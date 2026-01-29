@@ -43,19 +43,19 @@ class _MainScreenState extends State<MainScreen> {
       await AppStorage.saveFolder(folder);
     }
 
-    // Auto-escaneo para detectar canciones nuevas
+    setState(() {
+      _loading = false;
+    });
+
+    // Auto-escaneo para detectar canciones nuevas (en segundo plano)
     if (Directory(folder).existsSync()) {
-      await FileService.scanMusicWithCallback(
+      FileService.scanMusicWithCallback(
         folder,
         onScan: (path, scanned, found) {
           // Silent scan
         },
       );
     }
-
-    setState(() {
-      _loading = false;
-    });
   }
 
   @override

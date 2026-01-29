@@ -224,53 +224,30 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   color: Colors.white,
                 ),
               ),
-              Row(
-                children: [
-                  // BOTÓN FILTRAR POR LETRAS
-                  IconButton(
-                    onPressed: _toggleLyricsFilter,
-                    icon: Icon(
-                      _lyricsFilter == null
-                          ? Icons.filter_list
-                          : _lyricsFilter == 'with'
-                          ? Icons.check_circle
-                          : Icons.cancel,
-                      color: _lyricsFilter != null
-                          ? Colors.greenAccent
-                          : Colors.white70,
+              // BOTÓN DESCARGAR TODAS
+              Padding(
+                padding: const EdgeInsets.symmetric(),
+                child: ElevatedButton(
+                  onPressed: dm.isRunning ? null : downloadAll,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 10,
+                      horizontal: 20,
                     ),
-                    tooltip: _lyricsFilter == null
-                        ? 'Todas'
-                        : _lyricsFilter == 'with'
-                        ? 'Con letras'
-                        : 'Sin letras',
-                  ),
-                  // BOTÓN DESCARGAR TODAS
-                  Padding(
-                    padding: const EdgeInsets.symmetric(),
-                    child: ElevatedButton(
-                      onPressed: dm.isRunning ? null : downloadAll,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 10,
-                          horizontal: 20,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                      ),
-                      child: Text(
-                        dm.isRunning ? "Descargando..." : "Descargar todas",
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                ],
+                  child: Text(
+                    dm.isRunning ? "Descargando..." : "Descargar todas",
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -292,6 +269,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   padding: const EdgeInsets.all(0),
                   child: Row(
                     children: [
+                      // BOTÓN FILTRAR POR LETRAS
+                      IconButton(
+                        onPressed: _toggleLyricsFilter,
+                        icon: Icon(
+                          _lyricsFilter == null
+                              ? Icons.filter_list
+                              : _lyricsFilter == 'with'
+                              ? Icons.check_circle
+                              : Icons.cancel,
+                          color: _lyricsFilter != null
+                              ? Colors.greenAccent
+                              : Colors.white70,
+                        ),
+                        tooltip: _lyricsFilter == null
+                            ? 'Todas'
+                            : _lyricsFilter == 'with'
+                            ? 'Con letras'
+                            : 'Sin letras',
+                      ),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: TextField(
                           onChanged: filterSongs,
@@ -517,9 +514,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             child: Container(
                               width: 24,
                               padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: ListView.builder(
-                                itemCount: 26,
-                                itemBuilder: (context, index) {
+                              child: Column(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                children: List.generate(26, (index) {
                                   final letter = String.fromCharCode(
                                     65 + index,
                                   );
@@ -532,26 +530,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                     onTap: hasItems
                                         ? () => _scrollToLetter(letter)
                                         : null,
-                                    child: Container(
-                                      height: 20,
-                                      alignment: Alignment.center,
-                                      child: Text(
-                                        letter,
-                                        style: TextStyle(
-                                          color: hasItems
-                                              ? (_selectedLetter == letter
-                                                    ? Colors.greenAccent
-                                                    : Colors.white70)
-                                              : Colors.white24,
-                                          fontSize: 10,
-                                          fontWeight: _selectedLetter == letter
-                                              ? FontWeight.bold
-                                              : FontWeight.normal,
+                                    child: Expanded(
+                                      child: Container(
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          letter,
+                                          style: TextStyle(
+                                            color: hasItems
+                                                ? (_selectedLetter == letter
+                                                      ? Colors.greenAccent
+                                                      : Colors.white70)
+                                                : Colors.white24,
+                                            fontSize: 10,
+                                            fontWeight:
+                                                _selectedLetter == letter
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   );
-                                },
+                                }),
                               ),
                             ),
                           ),
