@@ -25,9 +25,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Set<String> downloadingSongs = {};
   final Map<String, Uint8List?> artworkCache = {};
   final dm = DownloadManager.instance;
+  String?
+  _lyricsFilter; // null = todas, 'with' = con letras, 'without' = sin letras
+  final ScrollController _scrollController = ScrollController();
+  String _selectedLetter = '';
 
   @override
   void dispose() {
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -36,13 +41,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
     super.initState();
     allSongs = FileService.librarySongs;
     filteredSongs = List.from(allSongs);
-    filteredSongs.sort((a, b) => a.title.compareTo(b.title));
+    filteredSongs.sort(
+      (a, b) => a.title.toUpperCase().compareTo(b.title.toUpperCase()),
+    );
     loadArtworkCache();
   }
 
   Future<void> loadArtworkCache() async {
     for (var song in allSongs) {
-      final art = await ArtworkCache.load(song.path);
       artworkCache[song.path] = await ArtworkCache.load(song.path);
     }
     setState(() {});
@@ -53,11 +59,50 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     setState(() {
       filteredSongs = allSongs.where((song) {
-        return song.title.toLowerCase().contains(query) ||
+        final matchesQuery =
+            song.title.toLowerCase().contains(query) ||
             song.artist.toLowerCase().contains(query) ||
             song.album.toLowerCase().contains(query);
+
+        if (_lyricsFilter == null) return matchesQuery;
+
+        final hasLyrics = hasLrc(song);
+        if (_lyricsFilter == 'with') {
+          return matchesQuery && hasLyrics;
+        } else {
+          return matchesQuery && !hasLyrics;
+        }
       }).toList();
     });
+  }
+
+  void _toggleLyricsFilter() {
+    setState(() {
+      if (_lyricsFilter == null) {
+        _lyricsFilter = 'with';
+      } else if (_lyricsFilter == 'with') {
+        _lyricsFilter = 'without';
+      } else {
+        _lyricsFilter = null;
+      }
+      filterSongs('');
+    });
+  }
+
+  void _scrollToLetter(String letter) {
+    final index = filteredSongs.indexWhere(
+      (song) => song.title.toUpperCase().startsWith(letter),
+    );
+    if (index != -1) {
+      _scrollController.animateTo(
+        index * 89.0, // altura aproximada de cada item
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      setState(() {
+        _selectedLetter = letter;
+      });
+    }
   }
 
   bool hasLrc(Song song) {
@@ -161,7 +206,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final primary = PrimaryScrollController.of(context);
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Color(0xFF0D1B2A),
@@ -180,30 +224,53 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   color: Colors.white,
                 ),
               ),
-              // BOTÓN DESCARGAR TODAS
-              Padding(
-                padding: const EdgeInsets.symmetric(),
-                child: ElevatedButton(
-                  onPressed: dm.isRunning ? null : downloadAll,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 10,
-                      horizontal: 20,
+              Row(
+                children: [
+                  // BOTÓN FILTRAR POR LETRAS
+                  IconButton(
+                    onPressed: _toggleLyricsFilter,
+                    icon: Icon(
+                      _lyricsFilter == null
+                          ? Icons.filter_list
+                          : _lyricsFilter == 'with'
+                          ? Icons.check_circle
+                          : Icons.cancel,
+                      color: _lyricsFilter != null
+                          ? Colors.greenAccent
+                          : Colors.white70,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+                    tooltip: _lyricsFilter == null
+                        ? 'Todas'
+                        : _lyricsFilter == 'with'
+                        ? 'Con letras'
+                        : 'Sin letras',
+                  ),
+                  // BOTÓN DESCARGAR TODAS
+                  Padding(
+                    padding: const EdgeInsets.symmetric(),
+                    child: ElevatedButton(
+                      onPressed: dm.isRunning ? null : downloadAll,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                          horizontal: 20,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                      child: Text(
+                        dm.isRunning ? "Descargando..." : "Descargar todas",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
-                  child: Text(
-                    dm.isRunning ? "Descargando..." : "Descargar todas",
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
+                ],
               ),
             ],
           ),
@@ -281,158 +348,214 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           style: TextStyle(color: Colors.white70),
                         ),
                       )
-                    : ScrollConfiguration(
-                        behavior: const MaterialScrollBehavior().copyWith(
-                          dragDevices: {PointerDeviceKind.touch},
-                        ),
+                    : Stack(
+                        children: [
+                          ScrollConfiguration(
+                            behavior: const MaterialScrollBehavior().copyWith(
+                              dragDevices: {PointerDeviceKind.touch},
+                            ),
+                            child: Scrollbar(
+                              controller: _scrollController,
+                              thumbVisibility: true,
+                              thickness: 7,
+                              interactive: true,
+                              radius: Radius.circular(10),
+                              child: RepaintBoundary(
+                                child: ListView.builder(
+                                  controller: _scrollController,
+                                  physics: const BouncingScrollPhysics(),
+                                  itemCount: filteredSongs.length,
+                                  itemBuilder: (_, i) {
+                                    final song = filteredSongs[i];
+                                    final lrcExists = hasLrc(song);
 
-                        child: Scrollbar(
-                          controller: primary,
-                          //controller: _scrollController,
-                          thumbVisibility: true,
-                          thickness: 7,
-                          interactive: true,
-                          radius: Radius.circular(10),
-                          child: RepaintBoundary(
-                            child: ListView.builder(
-                              //controller: _scrollController,
-                              controller: primary,
-                              physics: const BouncingScrollPhysics(),
-                              itemCount: filteredSongs.length,
-                              itemBuilder: (_, i) {
-                                final song = filteredSongs[i];
-                                final lrcExists = hasLrc(song);
+                                    return GestureDetector(
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                LyricsViewer(song: song),
+                                          ),
+                                        );
+                                      },
+                                      child: Container(
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 8,
+                                        ),
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.05),
+                                          borderRadius: BorderRadius.circular(
+                                            18,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            // Portada
+                                            ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              //Hero(
+                                              //tag: song.path,
+                                              child:
+                                                  artworkCache[song.path] !=
+                                                      null
+                                                  ? ClipRRect(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            12,
+                                                          ),
+                                                      child: Image.memory(
+                                                        artworkCache[song
+                                                            .path]!,
+                                                        height: 65,
+                                                        width: 65,
+                                                        fit: BoxFit.cover,
+                                                      ),
+                                                    )
+                                                  : Container(
+                                                      height: 65,
+                                                      width: 65,
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white12,
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
+                                                      ),
+                                                      child: const Icon(
+                                                        Icons.music_note,
+                                                        color: Colors.white70,
+                                                        size: 32,
+                                                      ),
+                                                    ),
+                                              //),
+                                            ),
 
-                                return GestureDetector(
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            LyricsViewer(song: song),
+                                            const SizedBox(width: 14),
+
+                                            // Título y Artista
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    song.title,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 18,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    "${song.artist} • ${song.album}",
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Colors.white70,
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+
+                                            const SizedBox(width: 12),
+
+                                            // Descarga / loader / check
+                                            lrcExists
+                                                ? const Icon(
+                                                    Icons.check_circle,
+                                                    color: Colors.greenAccent,
+                                                    size: 28,
+                                                  )
+                                                : downloadingSongs.contains(
+                                                        song.path,
+                                                      ) ||
+                                                      dm.isRunning
+                                                ? const SizedBox(
+                                                    width: 26,
+                                                    height: 26,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2.5,
+                                                          color: Colors.white,
+                                                        ),
+                                                  )
+                                                : IconButton(
+                                                    onPressed: () =>
+                                                        downloadOne(song),
+                                                    icon: const Icon(
+                                                      Icons.download,
+                                                      color: Colors.white,
+                                                      size: 26,
+                                                    ),
+                                                  ),
+                                          ],
+                                        ),
                                       ),
                                     );
                                   },
-                                  child: Container(
-                                    margin: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 8,
-                                    ),
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.05),
-                                      borderRadius: BorderRadius.circular(18),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        // Portada
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                          //Hero(
-                                          //tag: song.path,
-                                          child: artworkCache[song.path] != null
-                                              ? ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                  child: Image.memory(
-                                                    artworkCache[song.path]!,
-                                                    height: 65,
-                                                    width: 65,
-                                                    fit: BoxFit.cover,
-                                                  ),
-                                                )
-                                              : Container(
-                                                  height: 65,
-                                                  width: 65,
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.white12,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          12,
-                                                        ),
-                                                  ),
-                                                  child: const Icon(
-                                                    Icons.music_note,
-                                                    color: Colors.white70,
-                                                    size: 32,
-                                                  ),
-                                                ),
-                                          //),
-                                        ),
-
-                                        const SizedBox(width: 14),
-
-                                        // Título y Artista
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                song.title,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                "${song.artist} • ${song.album}",
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  color: Colors.white70,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-
-                                        const SizedBox(width: 12),
-
-                                        // Descarga / loader / check
-                                        lrcExists
-                                            ? const Icon(
-                                                Icons.check_circle,
-                                                color: Colors.greenAccent,
-                                                size: 28,
-                                              )
-                                            : downloadingSongs.contains(
-                                                    song.path,
-                                                  ) ||
-                                                  dm.isRunning
-                                            ? const SizedBox(
-                                                width: 26,
-                                                height: 26,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2.5,
-                                                      color: Colors.white,
-                                                    ),
-                                              )
-                                            : IconButton(
-                                                onPressed: () =>
-                                                    downloadOne(song),
-                                                icon: const Icon(
-                                                  Icons.download,
-                                                  color: Colors.white,
-                                                  size: 26,
-                                                ),
-                                              ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                          // BARRA ALFABÉTICA
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 24,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: ListView.builder(
+                                itemCount: 26,
+                                itemBuilder: (context, index) {
+                                  final letter = String.fromCharCode(
+                                    65 + index,
+                                  );
+                                  final hasItems = filteredSongs.any(
+                                    (song) => song.title
+                                        .toUpperCase()
+                                        .startsWith(letter),
+                                  );
+                                  return GestureDetector(
+                                    onTap: hasItems
+                                        ? () => _scrollToLetter(letter)
+                                        : null,
+                                    child: Container(
+                                      height: 20,
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        letter,
+                                        style: TextStyle(
+                                          color: hasItems
+                                              ? (_selectedLetter == letter
+                                                    ? Colors.greenAccent
+                                                    : Colors.white70)
+                                              : Colors.white24,
+                                          fontSize: 10,
+                                          fontWeight: _selectedLetter == letter
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
               ),
             ],

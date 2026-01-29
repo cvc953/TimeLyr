@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:timelyr/utils/song_database.dart';
+import 'dart:io';
 import '../widgets/gradient_background.dart';
 import 'library_screen.dart';
 import 'more_screen.dart';
@@ -41,6 +42,17 @@ class _MainScreenState extends State<MainScreen> {
       folder = DefaultMusicPath.defaultPath;
       await AppStorage.saveFolder(folder);
     }
+
+    // Auto-escaneo para detectar canciones nuevas
+    if (Directory(folder).existsSync()) {
+      await FileService.scanMusicWithCallback(
+        folder,
+        onScan: (path, scanned, found) {
+          // Silent scan
+        },
+      );
+    }
+
     setState(() {
       _loading = false;
     });
