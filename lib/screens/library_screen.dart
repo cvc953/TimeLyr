@@ -347,16 +347,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       )
                     : Stack(
                         children: [
-                          ScrollConfiguration(
-                            behavior: const MaterialScrollBehavior().copyWith(
-                              dragDevices: {PointerDeviceKind.touch},
-                            ),
-                            child: Scrollbar(
-                              controller: _scrollController,
-                              thumbVisibility: true,
-                              thickness: 7,
-                              interactive: true,
-                              radius: Radius.circular(10),
+                          Scrollbar(
+                            controller: _scrollController,
+                            thumbVisibility: true,
+                            thickness: 8,
+                            interactive: true,
+                            trackVisibility: false,
+                            radius: Radius.circular(10),
+                            child: ScrollConfiguration(
+                              behavior: const MaterialScrollBehavior().copyWith(
+                                dragDevices: {PointerDeviceKind.touch},
+                              ),
                               child: RepaintBoundary(
                                 child: ListView.builder(
                                   controller: _scrollController,
@@ -508,7 +509,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           ),
                           // BARRA ALFABÉTICA
                           Positioned(
-                            right: 0,
+                            right: 28,
                             top: 0,
                             bottom: 0,
                             child: GestureDetector(
