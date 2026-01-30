@@ -269,26 +269,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   padding: const EdgeInsets.all(0),
                   child: Row(
                     children: [
-                      // BOTÓN FILTRAR POR LETRAS
-                      IconButton(
-                        onPressed: _toggleLyricsFilter,
-                        icon: Icon(
-                          _lyricsFilter == null
-                              ? Icons.filter_list
-                              : _lyricsFilter == 'with'
-                              ? Icons.check_circle
-                              : Icons.cancel,
-                          color: _lyricsFilter != null
-                              ? Colors.greenAccent
-                              : Colors.white70,
-                        ),
-                        tooltip: _lyricsFilter == null
-                            ? 'Todas'
-                            : _lyricsFilter == 'with'
-                            ? 'Con letras'
-                            : 'Sin letras',
-                      ),
-                      const SizedBox(width: 4),
                       Expanded(
                         child: TextField(
                           onChanged: filterSongs,
@@ -312,6 +292,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           ),
                         ),
                       ),
+                      // BOTÓN FILTRAR POR LETRAS
+                      IconButton(
+                        onPressed: _toggleLyricsFilter,
+                        icon: Icon(
+                          _lyricsFilter == null
+                              ? Icons.filter_list
+                              : _lyricsFilter == 'with'
+                              ? Icons.check_circle
+                              : Icons.cancel,
+                          color: _lyricsFilter != null
+                              ? Colors.greenAccent
+                              : Colors.white70,
+                        ),
+                        tooltip: _lyricsFilter == null
+                            ? 'Todas'
+                            : _lyricsFilter == 'with'
+                            ? 'Con letras'
+                            : 'Sin letras',
+                      ),
+                      const SizedBox(width: 4),
                     ],
                   ),
                 ),
@@ -511,47 +511,55 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             right: 0,
                             top: 0,
                             bottom: 0,
-                            child: Container(
-                              width: 24,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Column(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
-                                children: List.generate(26, (index) {
-                                  final letter = String.fromCharCode(
-                                    65 + index,
-                                  );
-                                  final hasItems = filteredSongs.any(
-                                    (song) => song.title
-                                        .toUpperCase()
-                                        .startsWith(letter),
-                                  );
-                                  return GestureDetector(
-                                    onTap: hasItems
-                                        ? () => _scrollToLetter(letter)
-                                        : null,
-                                    child: Expanded(
-                                      child: Container(
-                                        alignment: Alignment.center,
-                                        child: Text(
-                                          letter,
-                                          style: TextStyle(
-                                            color: hasItems
-                                                ? (_selectedLetter == letter
-                                                      ? Colors.greenAccent
-                                                      : Colors.white70)
-                                                : Colors.white24,
-                                            fontSize: 10,
-                                            fontWeight:
-                                                _selectedLetter == letter
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onVerticalDragStart: (_) {},
+                              onVerticalDragUpdate: (_) {},
+                              onVerticalDragEnd: (_) {},
+                              child: Container(
+                                width: 24,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
+                                child: Column(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: List.generate(26, (index) {
+                                    final letter = String.fromCharCode(
+                                      65 + index,
+                                    );
+                                    final hasItems = filteredSongs.any(
+                                      (song) => song.title
+                                          .toUpperCase()
+                                          .startsWith(letter),
+                                    );
+                                    return Expanded(
+                                      child: GestureDetector(
+                                        onTap: hasItems
+                                            ? () => _scrollToLetter(letter)
+                                            : null,
+                                        child: Container(
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            letter,
+                                            style: TextStyle(
+                                              color: hasItems
+                                                  ? (_selectedLetter == letter
+                                                        ? Colors.greenAccent
+                                                        : Colors.white70)
+                                                  : Colors.white24,
+                                              fontSize: 10,
+                                              fontWeight:
+                                                  _selectedLetter == letter
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  );
-                                }),
+                                    );
+                                  }),
+                                ),
                               ),
                             ),
                           ),
