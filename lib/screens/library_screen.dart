@@ -347,169 +347,139 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       )
                     : Stack(
                         children: [
-                          Scrollbar(
+                          ListView.builder(
                             controller: _scrollController,
-                            thumbVisibility: true,
-                            thickness: 8,
-                            interactive: true,
-                            trackVisibility: false,
-                            radius: Radius.circular(10),
-                            child: ScrollConfiguration(
-                              behavior: const MaterialScrollBehavior().copyWith(
-                                dragDevices: {PointerDeviceKind.touch},
-                              ),
-                              child: RepaintBoundary(
-                                child: ListView.builder(
-                                  controller: _scrollController,
-                                  physics: const BouncingScrollPhysics(),
-                                  itemCount: filteredSongs.length,
-                                  itemBuilder: (_, i) {
-                                    final song = filteredSongs[i];
-                                    final lrcExists = hasLrc(song);
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: filteredSongs.length,
+                            itemBuilder: (_, i) {
+                              final song = filteredSongs[i];
+                              final lrcExists = hasLrc(song);
 
-                                    return GestureDetector(
-                                      onTap: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                LyricsViewer(song: song),
-                                          ),
-                                        );
-                                      },
-                                      child: Container(
-                                        margin: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 8,
-                                        ),
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.05),
-                                          borderRadius: BorderRadius.circular(
-                                            18,
-                                          ),
-                                        ),
-                                        child: Row(
+                              return GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => LyricsViewer(song: song),
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      // Portada
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        //Hero(
+                                        //tag: song.path,
+                                        child: artworkCache[song.path] != null
+                                            ? ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                child: Image.memory(
+                                                  artworkCache[song.path]!,
+                                                  height: 65,
+                                                  width: 65,
+                                                  fit: BoxFit.cover,
+                                                ),
+                                              )
+                                            : Container(
+                                                height: 65,
+                                                width: 65,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white12,
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                child: const Icon(
+                                                  Icons.music_note,
+                                                  color: Colors.white70,
+                                                  size: 32,
+                                                ),
+                                              ),
+                                        //),
+                                      ),
+
+                                      const SizedBox(width: 14),
+
+                                      // Título y Artista
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
-                                            // Portada
-                                            ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              //Hero(
-                                              //tag: song.path,
-                                              child:
-                                                  artworkCache[song.path] !=
-                                                      null
-                                                  ? ClipRRect(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            12,
-                                                          ),
-                                                      child: Image.memory(
-                                                        artworkCache[song
-                                                            .path]!,
-                                                        height: 65,
-                                                        width: 65,
-                                                        fit: BoxFit.cover,
-                                                      ),
-                                                    )
-                                                  : Container(
-                                                      height: 65,
-                                                      width: 65,
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.white12,
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              12,
-                                                            ),
-                                                      ),
-                                                      child: const Icon(
-                                                        Icons.music_note,
-                                                        color: Colors.white70,
-                                                        size: 32,
-                                                      ),
-                                                    ),
-                                              //),
-                                            ),
-
-                                            const SizedBox(width: 14),
-
-                                            // Título y Artista
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    song.title,
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 18,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    "${song.artist} • ${song.album}",
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      color: Colors.white70,
-                                                      fontSize: 14,
-                                                    ),
-                                                  ),
-                                                ],
+                                            Text(
+                                              song.title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
                                               ),
                                             ),
-
-                                            const SizedBox(width: 12),
-
-                                            // Descarga / loader / check
-                                            lrcExists
-                                                ? const Icon(
-                                                    Icons.check_circle,
-                                                    color: Colors.greenAccent,
-                                                    size: 28,
-                                                  )
-                                                : downloadingSongs.contains(
-                                                        song.path,
-                                                      ) ||
-                                                      dm.isRunning
-                                                ? const SizedBox(
-                                                    width: 26,
-                                                    height: 26,
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                          strokeWidth: 2.5,
-                                                          color: Colors.white,
-                                                        ),
-                                                  )
-                                                : IconButton(
-                                                    onPressed: () =>
-                                                        downloadOne(song),
-                                                    icon: const Icon(
-                                                      Icons.download,
-                                                      color: Colors.white,
-                                                      size: 26,
-                                                    ),
-                                                  ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              "${song.artist} • ${song.album}",
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 14,
+                                              ),
+                                            ),
                                           ],
                                         ),
                                       ),
-                                    );
-                                  },
+
+                                      const SizedBox(width: 12),
+
+                                      // Descarga / loader / check
+                                      lrcExists
+                                          ? const Icon(
+                                              Icons.check_circle,
+                                              color: Colors.greenAccent,
+                                              size: 28,
+                                            )
+                                          : downloadingSongs.contains(
+                                                  song.path,
+                                                ) ||
+                                                dm.isRunning
+                                          ? const SizedBox(
+                                              width: 26,
+                                              height: 26,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : IconButton(
+                                              onPressed: () =>
+                                                  downloadOne(song),
+                                              icon: const Icon(
+                                                Icons.download,
+                                                color: Colors.white,
+                                                size: 26,
+                                              ),
+                                            ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
                           // BARRA ALFABÉTICA
                           Positioned(
-                            right: 28,
+                            right: 4,
                             top: 0,
                             bottom: 0,
                             child: GestureDetector(
