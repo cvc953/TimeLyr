@@ -105,6 +105,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  String? _getLetterFromPosition(double localY, double height) {
+    final letterHeight = height / 26;
+    final index = (localY / letterHeight).floor().clamp(0, 25);
+    final letter = String.fromCharCode(65 + index);
+
+    final hasItems = filteredSongs.any(
+      (song) => song.title.toUpperCase().startsWith(letter),
+    );
+
+    return hasItems ? letter : null;
+  }
+
   bool hasLrc(Song song) {
     final file = File(song.path);
     final filename = p.basenameWithoutExtension(file.path);
@@ -482,56 +494,76 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             right: 4,
                             top: 0,
                             bottom: 0,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onVerticalDragStart: (_) {},
-                              onVerticalDragUpdate: (_) {},
-                              onVerticalDragEnd: (_) {},
-                              child: Container(
-                                width: 24,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 8,
-                                ),
-                                child: Column(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceEvenly,
-                                  children: List.generate(26, (index) {
-                                    final letter = String.fromCharCode(
-                                      65 + index,
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                return GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onVerticalDragUpdate: (details) {
+                                    final letter = _getLetterFromPosition(
+                                      details.localPosition.dy,
+                                      constraints.maxHeight - 16,
                                     );
-                                    final hasItems = filteredSongs.any(
-                                      (song) => song.title
-                                          .toUpperCase()
-                                          .startsWith(letter),
+                                    if (letter != null) {
+                                      _scrollToLetter(letter);
+                                    }
+                                  },
+                                  onTapDown: (details) {
+                                    final letter = _getLetterFromPosition(
+                                      details.localPosition.dy,
+                                      constraints.maxHeight - 16,
                                     );
-                                    return Expanded(
-                                      child: GestureDetector(
-                                        onTap: hasItems
-                                            ? () => _scrollToLetter(letter)
-                                            : null,
-                                        child: Container(
-                                          alignment: Alignment.center,
-                                          child: Text(
-                                            letter,
-                                            style: TextStyle(
-                                              color: hasItems
-                                                  ? (_selectedLetter == letter
-                                                        ? Colors.greenAccent
-                                                        : Colors.white70)
-                                                  : Colors.white24,
-                                              fontSize: 10,
-                                              fontWeight:
-                                                  _selectedLetter == letter
-                                                  ? FontWeight.bold
-                                                  : FontWeight.normal,
+                                    if (letter != null) {
+                                      _scrollToLetter(letter);
+                                    }
+                                  },
+                                  child: Container(
+                                    width: 24,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceEvenly,
+                                      children: List.generate(26, (index) {
+                                        final letter = String.fromCharCode(
+                                          65 + index,
+                                        );
+                                        final hasItems = filteredSongs.any(
+                                          (song) => song.title
+                                              .toUpperCase()
+                                              .startsWith(letter),
+                                        );
+                                        return Expanded(
+                                          child: GestureDetector(
+                                            onTap: hasItems
+                                                ? () => _scrollToLetter(letter)
+                                                : null,
+                                            child: Container(
+                                              alignment: Alignment.center,
+                                              child: Text(
+                                                letter,
+                                                style: TextStyle(
+                                                  color: hasItems
+                                                      ? (_selectedLetter ==
+                                                                letter
+                                                            ? Colors.greenAccent
+                                                            : Colors.white70)
+                                                      : Colors.white24,
+                                                  fontSize: 10,
+                                                  fontWeight:
+                                                      _selectedLetter == letter
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal,
+                                                ),
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ),
-                              ),
+                                        );
+                                      }),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ],
