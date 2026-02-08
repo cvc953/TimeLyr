@@ -115,7 +115,9 @@ class FileService {
         final ttmlPath = "$dir/$filename.ttml";
 
         final ttmlFile = File(ttmlPath);
-        await ttmlFile.writeAsString(ttmlContent);
+        // Formatear XML/TTML para que no quede todo en una sola línea
+        final formatted = _formatXml(ttmlContent);
+        await ttmlFile.writeAsString(formatted);
         return true;
       }
 
@@ -129,6 +131,49 @@ class FileService {
   static Future<bool> saveTTMLForSong(String songPath, Song song) async {
     final url = lyricsPlusUrlForSong(song);
     return await saveTTMLFromUrl(songPath, url);
+  }
+
+  static String _formatXml(String xml) {
+    try {
+      // Insertar saltos de línea entre etiquetas cerradas y abiertas
+      var s = xml.replaceAll(RegExp(r'>\s*<'), '>' + '\n' + '<');
+
+      final lines = s.split('\n');
+      final sb = StringBuffer();
+      int indent = 0;
+      String indentStr(int n) => '  ' * n;
+
+      for (var raw in lines) {
+        final line = raw.trim();
+        if (line.isEmpty) continue;
+
+        if (line.startsWith('<?') && line.endsWith('?>')) {
+          sb.writeln(line);
+          continue;
+        }
+
+        if (line.startsWith('</')) {
+          indent = (indent - 1).clamp(0, 9999);
+          sb.writeln('${indentStr(indent)}$line');
+          continue;
+        }
+
+        // Self-closing tag
+        final isSelfClosing = line.endsWith('/>');
+        // Opening tag
+        final isOpeningTag = line.startsWith('<') && !line.startsWith('</');
+
+        sb.writeln('${indentStr(indent)}$line');
+
+        if (isOpeningTag && !isSelfClosing && !line.startsWith('<?')) {
+          indent++;
+        }
+      }
+
+      return sb.toString();
+    } catch (e) {
+      return xml;
+    }
   }
 
   static Future<Uint8List?> loadArtwork(String path) async {

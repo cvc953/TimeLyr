@@ -54,16 +54,22 @@ class LyricsService {
 
   /// Descarga y guarda en archivo .lrc
   static Future<bool> downloadAndSave(Song song) async {
+    bool savedLrc = false;
     final lyrics = await fetchLyrics(song);
 
-    if (lyrics == null) return false;
+    if (lyrics != null) {
+      await FileService.saveLRC(song.path, lyrics, song);
+      savedLrc = true;
+    }
 
-    await FileService.saveLRC(song.path, lyrics, song);
-    // Intentar también descargar y guardar el TTML desde Lyrics+ junto al archivo
+    bool savedTtml = false;
     try {
-      await FileService.saveTTMLForSong(song.path, song);
-    } catch (_) {}
-    return true;
+      savedTtml = await FileService.saveTTMLForSong(song.path, song);
+    } catch (_) {
+      savedTtml = false;
+    }
+
+    return savedLrc || savedTtml;
   }
 
   static Future<bool> saveManualResult(Song song, LyricResult result) async {
