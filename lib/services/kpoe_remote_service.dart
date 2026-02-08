@@ -53,8 +53,7 @@ class KpoeRemoteService {
     if (trimmed.startsWith('<?xml') ||
         trimmed.startsWith('<tt') ||
         trimmed.startsWith('<!DOCTYPE')) {
-      return _normalizeTimestampsInString(
-      );
+      return _normalizeTimestampsInString(jsonString);
     }
 
     Map<String, dynamic> root;
