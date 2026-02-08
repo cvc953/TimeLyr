@@ -53,7 +53,9 @@ class KpoeRemoteService {
     if (trimmed.startsWith('<?xml') ||
         trimmed.startsWith('<tt') ||
         trimmed.startsWith('<!DOCTYPE')) {
-      return _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(jsonString)));
+      return _normalizeTimestampsInString(
+        _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(jsonString))),
+      );
     }
 
     Map<String, dynamic> root;
@@ -67,7 +69,9 @@ class KpoeRemoteService {
           artist: artist,
           version: version,
         );
-        return _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(ttml)));
+        return _normalizeTimestampsInString(
+          _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(ttml))),
+        );
       }
       final ttml = _minimalTtmlFromText(
         jsonString,
@@ -75,12 +79,16 @@ class KpoeRemoteService {
         artist: artist,
         version: version,
       );
-      return _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(ttml)));
+      return _normalizeTimestampsInString(
+        _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(ttml))),
+      );
     }
 
     if (root.containsKey('ttml') && root['ttml'] is String) {
-      return _fixMissingSpaces(
-        _ensureXmlDeclaration(_formatXml(root['ttml'] as String)),
+      return _normalizeTimestampsInString(
+        _fixMissingSpaces(
+          _ensureXmlDeclaration(_formatXml(root['ttml'] as String)),
+        ),
       );
     }
 
@@ -127,7 +135,9 @@ class KpoeRemoteService {
     sb.writeln('  </body>');
     sb.writeln('</tt>');
 
-    return _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(sb.toString())));
+    return _normalizeTimestampsInString(
+      _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(sb.toString()))),
+    );
   }
 
   static String _fixMissingSpaces(String s) {
@@ -155,6 +165,39 @@ class KpoeRemoteService {
       );
     }
     return '<?xml version="1.0" encoding="utf-8"?>\n' + trimmed;
+  }
+
+  static String _normalizeTimestampsInString(String s) {
+    try {
+      // Normalize attributes like begin="55.013" -> begin="00:55.013"
+      // and pad minute/hours to two digits when present: 5:03.120 -> 05:03.120
+      return s.replaceAllMapped(RegExp(r'(?:\b(begin|end)\s*=\s*\")([^\"]+)(\")'), (
+        m,
+      ) {
+        final attr = m.group(1)!;
+        var val = m.group(2)!;
+
+        // If already contains colon(s), pad the first numeric part to two digits
+        if (val.contains(':')) {
+          // Split by colon, keep rest intact (supports hh:mm:ss.ms or mm:ss.ms)
+          final parts = val.split(':');
+          if (parts.isNotEmpty) {
+            final first = parts[0];
+            final rest = parts.skip(1).join(':');
+            final numFirst = int.tryParse(first) ?? 0;
+            final padded = numFirst.toString().padLeft(2, '0');
+            val = '$padded:${rest}';
+          }
+        } else {
+          // No colon -> prefix with 00:
+          val = '00:${val}';
+        }
+
+        return '${attr}="${val}"';
+      });
+    } catch (e) {
+      return s;
+    }
   }
 
   static Future<String?> fetchFromKpoe(

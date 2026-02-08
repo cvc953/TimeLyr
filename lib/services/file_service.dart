@@ -127,6 +127,10 @@ class FileService {
         // structure. Use the shared converter to produce clean TTML.
         String ttmlContent = KpoeRemoteService.convertKpoeJsonToTtml(res.body);
 
+        // Redundantly normalize/format again before writing to disk to ensure
+        // timestamps, XML declaration and spacing are correct.
+        ttmlContent = KpoeRemoteService.convertKpoeJsonToTtml(ttmlContent);
+
         final ttmlFile = File(ttmlPath);
         await ttmlFile.writeAsString(ttmlContent);
         return true;
