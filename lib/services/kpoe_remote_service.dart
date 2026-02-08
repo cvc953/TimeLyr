@@ -53,7 +53,7 @@ class KpoeRemoteService {
     if (trimmed.startsWith('<?xml') ||
         trimmed.startsWith('<tt') ||
         trimmed.startsWith('<!DOCTYPE')) {
-      return _ensureXmlDeclaration(_formatXml(jsonString));
+      return _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(jsonString)));
     }
 
     Map<String, dynamic> root;
@@ -61,23 +61,27 @@ class KpoeRemoteService {
       root = json.decode(jsonString) as Map<String, dynamic>;
     } catch (e) {
       if (_looksLikeLrc(jsonString)) {
-        return _lrcToTtml(
+        final ttml = _lrcToTtml(
           jsonString,
           title: title,
           artist: artist,
           version: version,
         );
+        return _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(ttml)));
       }
-      return _minimalTtmlFromText(
+      final ttml = _minimalTtmlFromText(
         jsonString,
         title: title,
         artist: artist,
         version: version,
       );
+      return _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(ttml)));
     }
 
     if (root.containsKey('ttml') && root['ttml'] is String) {
-      return _ensureXmlDeclaration(_formatXml(root['ttml'] as String));
+      return _fixMissingSpaces(
+        _ensureXmlDeclaration(_formatXml(root['ttml'] as String)),
+      );
     }
 
     final lyrics =
@@ -123,7 +127,22 @@ class KpoeRemoteService {
     sb.writeln('  </body>');
     sb.writeln('</tt>');
 
-    return _ensureXmlDeclaration(_formatXml(sb.toString()));
+    return _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(sb.toString())));
+  }
+
+  static String _fixMissingSpaces(String s) {
+    try {
+      // Add a space before closing </span> tags when the previous character
+      // is not whitespace. Avoid duplicating spaces.
+      return s.replaceAllMapped(RegExp(r'>([^<]*\S)</span>'), (m) {
+        final inner = m.group(1)!;
+        // If inner already ends with a space, leave as-is.
+        if (inner.endsWith(' ')) return '>$inner</span>';
+        return '>$inner </span>';
+      });
+    } catch (e) {
+      return s;
+    }
   }
 
   static String _ensureXmlDeclaration(String s) {
