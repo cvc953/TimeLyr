@@ -7,7 +7,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
-import 'kpoe_remote_service.dart';
+import 'package:timelyr/services/kpoe_remote_service.dart';
 
 class FileService {
   static List<Song> librarySongs = [];
