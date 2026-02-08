@@ -135,9 +135,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Future<void> downloadAll() async {
     final listToDownload = filteredSongs.isNotEmpty ? filteredSongs : allSongs;
 
-    final listToDownloadFiltered = listToDownload
+    // Separar canciones sin LRC (para descargar LRC + TTML) y canciones
+    // que ya tienen LRC (para solo intentar descargar/guardar el TTML).
+    final listWithoutLrc = listToDownload
         .where((song) => !hasLrc(song))
         .toList();
+    final listWithLrc = listToDownload.where((song) => hasLrc(song)).toList();
     // Escuchar progreso
     DownloadManager().progressStream.listen((p) {
       setState(() => dm.progress = p);
@@ -147,7 +150,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
       downloadingAll = true;
     });
 
-    await DownloadManager().downloadAll(listToDownloadFiltered);
+    // Descarga LRC (y TTML) para las canciones que no tienen LRC
+    await DownloadManager().downloadAll(listWithoutLrc);
+
+    // Para las canciones que ya tienen LRC, intentar descargar/guardar solo el TTML
+    try {
+      final futures = listWithLrc.map(
+        (s) => FileService.saveTTMLForSong(s.path, s),
+      );
+      await Future.wait(futures);
+    } catch (_) {}
 
     setState(() {
       downloadingAll = false;

@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
+import 'kpoe_remote_service.dart';
 
 class FileService {
   static List<Song> librarySongs = [];
@@ -97,22 +98,34 @@ class FileService {
   /// con la misma base de nombre y extensión `.ttml`.
   static Future<bool> saveTTMLFromUrl(String songPath, String url) async {
     try {
+      final file = File(songPath);
+      final dir = file.parent.path;
+      final filename = p.basenameWithoutExtension(file.path);
+      final ttmlPath = "$dir/$filename.ttml";
+
+      // Si ya existe un .ttml para esta canción, comprobar su integridad.
+      // Si parece válido, no reintentar; si parece dañado, proceder a descargar.
+      final existing = File(ttmlPath);
+      if (existing.existsSync()) {
+        try {
+          final contents = await existing.readAsString();
+          // Considerar válido si contiene etiqueta <tt y tiene tamaño razonable
+          if (contents.contains('<tt') || contents.contains('<?xml')) {
+            if (contents.trim().length > 100) return true;
+          }
+          // Si no parece válido, continuar y reintentar la descarga (sobrescribir).
+        } catch (_) {
+          // Si no se puede leer, intentar descargar de nuevo.
+        }
+      }
+
       final res = await http.get(Uri.parse(url));
 
       if (res.statusCode == 200) {
-        String ttmlContent = res.body;
-
-        try {
-          final decoded = jsonDecode(res.body);
-          if (decoded is Map && decoded["ttml"] is String) {
-            ttmlContent = decoded["ttml"] as String;
-          }
-        } catch (_) {}
-
-        final file = File(songPath);
-        final dir = file.parent.path;
-        final filename = p.basenameWithoutExtension(file.path);
-        final ttmlPath = "$dir/$filename.ttml";
+        // Normalize the response into a proper TTML string. The server may
+        // return raw TTML, a JSON envelope with `ttml`, or a KPoe-style JSON
+        // structure. Use the shared converter to produce clean TTML.
+        String ttmlContent = KpoeRemoteService.convertKpoeJsonToTtml(res.body);
 
         final ttmlFile = File(ttmlPath);
         await ttmlFile.writeAsString(ttmlContent);

@@ -164,6 +164,11 @@ class LyricPreviewScreen extends StatelessWidget {
                             const Duration(milliseconds: 300),
                           );
 
+                          // Intentar también descargar/guardar TTML desde Lyrics+ (no bloqueante)
+                          try {
+                            FileService.saveTTMLForSong(song.path, song);
+                          } catch (_) {}
+
                           if (!context.mounted) return;
 
                           // ignore: use_build_context_synchronously

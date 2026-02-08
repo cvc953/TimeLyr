@@ -5,6 +5,7 @@ import 'package:timelyr/screens/search_screen.dart';
 import 'package:timelyr/utils/artwork_cache.dart';
 import '../models/song.dart';
 import '../services/lyrics_service.dart';
+import '../services/file_service.dart';
 import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 
@@ -38,6 +39,11 @@ class _LyricsViewerState extends State<LyricsViewer> {
 
     if (File(lrcPath).existsSync()) {
       lyrics = await File(lrcPath).readAsString();
+      // Intento de guardar/actualizar también el TTML desde Lyrics+
+      try {
+        FileService.saveTTMLForSong(widget.song.path, widget.song);
+      } catch (_) {}
+
       setState(() => loading = false);
       return;
     }
