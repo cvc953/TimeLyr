@@ -53,7 +53,7 @@ class KpoeRemoteService {
     if (trimmed.startsWith('<?xml') ||
         trimmed.startsWith('<tt') ||
         trimmed.startsWith('<!DOCTYPE')) {
-      return jsonString;
+      return _ensureXmlDeclaration(_formatXml(jsonString));
     }
 
     Map<String, dynamic> root;
@@ -77,7 +77,7 @@ class KpoeRemoteService {
     }
 
     if (root.containsKey('ttml') && root['ttml'] is String) {
-      return root['ttml'] as String;
+      return _ensureXmlDeclaration(_formatXml(root['ttml'] as String));
     }
 
     final lyrics =
@@ -123,7 +123,19 @@ class KpoeRemoteService {
     sb.writeln('  </body>');
     sb.writeln('</tt>');
 
-    return sb.toString();
+    return _ensureXmlDeclaration(_formatXml(sb.toString()));
+  }
+
+  static String _ensureXmlDeclaration(String s) {
+    final trimmed = s.trimLeft();
+    final declRe = RegExp(r'^<\?xml[^>]*\?>\s*', multiLine: false);
+    if (declRe.hasMatch(trimmed)) {
+      return trimmed.replaceFirst(
+        declRe,
+        '<?xml version="1.0" encoding="utf-8"?>\n',
+      );
+    }
+    return '<?xml version="1.0" encoding="utf-8"?>\n' + trimmed;
   }
 
   static Future<String?> fetchFromKpoe(
