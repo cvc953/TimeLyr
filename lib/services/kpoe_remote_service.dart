@@ -80,8 +80,7 @@ class KpoeRemoteService {
       );
       return _normalizeTimestampsInString(
         agregarEspacioEntreSpans(
-          _ensureXmlDeclaration(_formatXml(ttml)),
-
+          _ensureXmlDeclaration(_formatXml(ttml)))
       );
     }
 
@@ -447,7 +446,7 @@ class KpoeRemoteService {
   }
   
     /// Procesa un string XML y agrega espacio al final de la palabra dentro de <span> solo si hay espacio entre ese <span> y el siguiente.
-    String agregarEspacioEntreSpans(String xml) {
+    static String agregarEspacioEntreSpans(String xml) {
       final spanRegex = RegExp(r'<span[^>]*>([^<]*)<\/span>');
       final buffer = StringBuffer();
       int lastEnd = 0;
