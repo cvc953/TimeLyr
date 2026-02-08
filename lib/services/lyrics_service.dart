@@ -59,6 +59,10 @@ class LyricsService {
     if (lyrics == null) return false;
 
     await FileService.saveLRC(song.path, lyrics, song);
+    // Intentar también descargar y guardar el TTML desde Lyrics+ junto al archivo
+    try {
+      await FileService.saveTTMLForSong(song.path, song);
+    } catch (_) {}
     return true;
   }
 
@@ -93,6 +97,10 @@ class LyricsService {
       await lrcFile.writeAsString(
         '$lyrics\n[ar:${song.artist.toString()}]\n[al:${song.album.toString()}]\n[ti:${song.title.toString()}]\n\n[by:TimeLyr]\n[source:LRCLib.net]',
       );
+      // También intentar obtener y guardar el TTML desde Lyrics+
+      try {
+        await FileService.saveTTMLForSong(song.path, song);
+      } catch (_) {}
     } catch (e) {
       // print(">>> Error en saveManualResult: $e");
       return false;

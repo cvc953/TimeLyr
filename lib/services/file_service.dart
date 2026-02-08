@@ -4,7 +4,9 @@ import 'package:timelyr/utils/song_database.dart';
 import 'package:metadata_god/metadata_god.dart';
 import '../models/song.dart';
 import 'dart:typed_data';
+import 'dart:convert';
 import 'package:path/path.dart' as p;
+import 'package:http/http.dart' as http;
 
 class FileService {
   static List<Song> librarySongs = [];
@@ -72,6 +74,61 @@ class FileService {
     await lrcFile.writeAsString(
       '$lyrics\n[ar:${song.artist.toString()}]\n[al:${song.album.toString()}]\n[ti:${song.title.toString()}]\n\n[by:TimeLyr]\n[source:LRCLib.net]',
     );
+  }
+
+  static String lyricsPlusUrlForSong(Song song) {
+    final params = {
+      'title': song.title ?? '',
+      'artist': song.artist ?? '',
+      'album': song.album ?? '',
+      'duration': (song.durationSeconds ?? 0).toString(),
+    };
+
+    final uri = Uri.https(
+      'lyricsplus-seven.vercel.app',
+      '/v1/ttml/get',
+      params,
+    );
+
+    return uri.toString();
+  }
+
+  /// Descarga el TTML desde la URL dada y lo guarda junto al archivo de la canción
+  /// con la misma base de nombre y extensión `.ttml`.
+  static Future<bool> saveTTMLFromUrl(String songPath, String url) async {
+    try {
+      final res = await http.get(Uri.parse(url));
+
+      if (res.statusCode == 200) {
+        String ttmlContent = res.body;
+
+        try {
+          final decoded = jsonDecode(res.body);
+          if (decoded is Map && decoded["ttml"] is String) {
+            ttmlContent = decoded["ttml"] as String;
+          }
+        } catch (_) {}
+
+        final file = File(songPath);
+        final dir = file.parent.path;
+        final filename = p.basenameWithoutExtension(file.path);
+        final ttmlPath = "$dir/$filename.ttml";
+
+        final ttmlFile = File(ttmlPath);
+        await ttmlFile.writeAsString(ttmlContent);
+        return true;
+      }
+
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Construye la URL para `lyricsplus` y descarga/guarda el TTML para la canción.
+  static Future<bool> saveTTMLForSong(String songPath, Song song) async {
+    final url = lyricsPlusUrlForSong(song);
+    return await saveTTMLFromUrl(songPath, url);
   }
 
   static Future<Uint8List?> loadArtwork(String path) async {
