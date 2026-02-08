@@ -408,37 +408,57 @@ class KpoeRemoteService {
 
   static String _formatXml(String xml) {
     try {
-      var s = xml.replaceAll(RegExp(r'>\s*<'), '>' + '\n' + '<');
+      // Reemplaza > < por >\n< excepto si es <span>
+      var s = xml.replaceAllMapped(
+        RegExp(r'>(\s*)<'),
+        (m) {
+          // Si la siguiente etiqueta es <span, no agregues salto de línea
+          final after = xml.substring(m.end, m.end + 5 > xml.length ? xml.length : m.end + 5);
+          if (after.startsWith('span')) return '><';
+          // Si la anterior es </span>, tampoco agregues salto de línea
+          final before = xml.substring(m.start - 6 < 0 ? 0 : m.start - 6, m.start);
+          if (before.endsWith('/span')) return '><';
+          return '>\n<';
+        },
+      );
+      // Ahora, para cada línea, solo indenta si no es <span> ni </span>
       final lines = s.split('\n');
       final sb = StringBuffer();
       int indent = 0;
       String indentStr(int n) => '  ' * n;
-
       for (var raw in lines) {
         final line = raw.trim();
         if (line.isEmpty) continue;
-
         if (line.startsWith('<?') && line.endsWith('?>')) {
           sb.writeln(line);
           continue;
         }
-
         if (line.startsWith('</')) {
           indent = (indent - 1).clamp(0, 9999);
+          // Si es </span>, no indentes ni hagas salto de línea
+          if (line.startsWith('</span')) {
+            sb.write(line);
+            continue;
+          }
           sb.writeln('${indentStr(indent)}$line');
+          // Si es </p>, agrega salto de línea extra
+          if (line.startsWith('</p')) {
+            sb.writeln();
+          }
           continue;
         }
-
+        // Si es <span>, no indentes ni hagas salto de línea
+        if (line.startsWith('<span')) {
+          sb.write(line);
+          continue;
+        }
         final isSelfClosing = line.endsWith('/>');
         final isOpeningTag = line.startsWith('<') && !line.startsWith('</');
-
         sb.writeln('${indentStr(indent)}$line');
-
         if (isOpeningTag && !isSelfClosing && !line.startsWith('<?')) {
           indent++;
         }
       }
-
       return sb.toString();
     } catch (e) {
       return xml;
