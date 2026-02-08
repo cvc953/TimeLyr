@@ -54,7 +54,6 @@ class KpoeRemoteService {
         trimmed.startsWith('<tt') ||
         trimmed.startsWith('<!DOCTYPE')) {
       return _normalizeTimestampsInString(
-        _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(jsonString))),
       );
     }
 
@@ -70,7 +69,7 @@ class KpoeRemoteService {
           version: version,
         );
         return _normalizeTimestampsInString(
-          _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(ttml))),
+         agregarEspacioEntreSpans(_ensureXmlDeclaration(_formatXml(ttml)))
         );
       }
       final ttml = _minimalTtmlFromText(
@@ -80,14 +79,18 @@ class KpoeRemoteService {
         version: version,
       );
       return _normalizeTimestampsInString(
-        _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(ttml))),
+        agregarEspacioEntreSpans(
+          _ensureXmlDeclaration(_formatXml(ttml)),
+
       );
     }
 
     if (root.containsKey('ttml') && root['ttml'] is String) {
       return _normalizeTimestampsInString(
-        _fixMissingSpaces(
-          _ensureXmlDeclaration(_formatXml(root['ttml'] as String)),
+        agregarEspacioEntreSpans(
+          _ensureXmlDeclaration(
+            _formatXml(root['ttml'] as String),
+          ),
         ),
       );
     }
@@ -136,24 +139,10 @@ class KpoeRemoteService {
     sb.writeln('</tt>');
 
     return _normalizeTimestampsInString(
-      _fixMissingSpaces(_ensureXmlDeclaration(_formatXml(sb.toString()))),
+      agregarEspacioEntreSpans(_ensureXmlDeclaration(_formatXml(sb.toString()))),
     );
   }
 
-  static String _fixMissingSpaces(String s) {
-    try {
-      // Add a space before closing </span> tags when the previous character
-      // is not whitespace. Avoid duplicating spaces.
-      return s.replaceAllMapped(RegExp(r'>([^<]*\S)</span>'), (m) {
-        final inner = m.group(1)!;
-        // If inner already ends with a space, leave as-is.
-        if (inner.endsWith(' ')) return '>$inner</span>';
-        return '>$inner </span>';
-      });
-    } catch (e) {
-      return s;
-    }
-  }
 
   static String _ensureXmlDeclaration(String s) {
     final trimmed = s.trimLeft();
@@ -456,4 +445,39 @@ class KpoeRemoteService {
       return xml;
     }
   }
+  
+    /// Procesa un string XML y agrega espacio al final de la palabra dentro de <span> solo si hay espacio entre ese <span> y el siguiente.
+    String agregarEspacioEntreSpans(String xml) {
+      final spanRegex = RegExp(r'<span[^>]*>([^<]*)<\/span>');
+      final buffer = StringBuffer();
+      int lastEnd = 0;
+      final matches = spanRegex.allMatches(xml).toList();
+  
+      for (int i = 0; i < matches.length; i++) {
+        final match = matches[i];
+        // Añade el texto entre el final del último match y el inicio del actual
+        buffer.write(xml.substring(lastEnd, match.start));
+        String palabra = match.group(1)!;
+        String spanTag = match.group(0)!;
+        // Verifica si hay espacio después del span actual
+        bool hayEspacio = false;
+        if (i < matches.length - 1) {
+          int afterSpan = match.end;
+          int nextSpanStart = matches[i + 1].start;
+          String entreSpans = xml.substring(afterSpan, nextSpanStart);
+          hayEspacio = entreSpans.contains(' ');
+        }
+        // Si hay espacio, agrega espacio al final de la palabra
+        if (hayEspacio) {
+          // Reconstruye el span con espacio
+          spanTag = spanTag.replaceFirst('>$palabra<', '>${palabra} <');
+        }
+        buffer.write(spanTag);
+        lastEnd = match.end;
+      }
+      // Añade el resto del texto
+      buffer.write(xml.substring(lastEnd));
+      return buffer.toString();
+    }
+  
 }
