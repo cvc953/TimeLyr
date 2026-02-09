@@ -471,10 +471,13 @@ class KpoeRemoteService {
   // espacios entre etiquetas). Se usa un placeholder HTML comment.
   static String _markInterSpanSpaces(String s) {
     try {
-      return s.replaceAllMapped(
-        RegExp(r'</span>\s+<span'),
-        (m) => '</span><!--SPL--><span',
-      );
+      // Inserta un marcador justo antes del cierre </span> cuando haya espacio
+      // literal entre ese </span> y el siguiente <span>, para luego reemplazar
+      // el marcador por un espacio dentro del contenido del span.
+      return s.replaceAllMapped(RegExp(r'>([^<]*)</span>\s+<span'), (m) {
+        final inner = m.group(1) ?? '';
+        return '>${inner}<!--SPL--></span><span';
+      });
     } catch (e) {
       return s;
     }
