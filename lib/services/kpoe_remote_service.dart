@@ -460,9 +460,25 @@ class KpoeRemoteService {
           indent++;
         }
       }
-      return sb.toString();
+      var out = sb.toString();
+      out = _cleanupParagraphLinebreaks(out);
+      return out;
     } catch (e) {
       return xml;
+    }
+  }
+
+  // Asegura que no haya saltos de línea antes de </p> y que cada </p> vaya seguida
+  // de un salto de línea para separar párrafos claramente.
+  static String _cleanupParagraphLinebreaks(String s) {
+    try {
+      // Elimina saltos de línea y espacios antes de </p>
+      s = s.replaceAll(RegExp(r'\n\s*</p>'), '</p>');
+      // Si </p> quedó pegado a otra etiqueta de apertura, añade salto de línea
+      s = s.replaceAll('</p><', '</p>\n<');
+      return s;
+    } catch (e) {
+      return s;
     }
   }
 
