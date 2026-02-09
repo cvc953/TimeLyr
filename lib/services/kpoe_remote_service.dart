@@ -70,7 +70,8 @@ class KpoeRemoteService {
         final marked = _markInterSpanSpaces(ttml);
         final formatted = _formatXml(marked);
         final restored = _restoreInterSpanSpaces(formatted);
-        return _normalizeTimestampsInString(_ensureXmlDeclaration(restored));
+          final collapsed = _collapseParagraphs(restored);
+          return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
       }
       final ttml = _minimalTtmlFromText(
         jsonString,
@@ -81,7 +82,8 @@ class KpoeRemoteService {
       final marked = _markInterSpanSpaces(ttml);
       final formatted = _formatXml(marked);
       final restored = _restoreInterSpanSpaces(formatted);
-      return _normalizeTimestampsInString(_ensureXmlDeclaration(restored));
+      final collapsed = _collapseParagraphs(restored);
+      return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
     }
 
     if (root.containsKey('ttml') && root['ttml'] is String) {
@@ -89,7 +91,8 @@ class KpoeRemoteService {
       final marked = _markInterSpanSpaces(rawTtml);
       final formatted = _formatXml(marked);
       final restored = _restoreInterSpanSpaces(formatted);
-      return _normalizeTimestampsInString(_ensureXmlDeclaration(restored));
+      final collapsed = _collapseParagraphs(restored);
+      return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
     }
 
     final lyrics =
@@ -138,7 +141,8 @@ class KpoeRemoteService {
     final marked = _markInterSpanSpaces(sb.toString());
     final formatted = _formatXml(marked);
     final restored = _restoreInterSpanSpaces(formatted);
-    return _normalizeTimestampsInString(_ensureXmlDeclaration(restored));
+      final collapsed = _collapseParagraphs(restored);
+      return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
   }
 
   static String _ensureXmlDeclaration(String s) {
@@ -155,31 +159,41 @@ class KpoeRemoteService {
 
   static String _normalizeTimestampsInString(String s) {
     try {
-      // Normalize attributes like begin="55.013" -> begin="00:55.013"
-      // and pad minute/hours to two digits when present: 5:03.120 -> 05:03.120
-      return s.replaceAllMapped(RegExp(r'(?:\b(begin|end)\s*=\s*\")([^\"]+)(\")'), (
-        m,
-      ) {
-        final attr = m.group(1)!;
-        var val = m.group(2)!;
-
-        // If already contains colon(s), pad the first numeric part to two digits
-        if (val.contains(':')) {
-          // Split by colon, keep rest intact (supports hh:mm:ss.ms or mm:ss.ms)
-          final parts = val.split(':');
-          if (parts.isNotEmpty) {
-            final first = parts[0];
-            final rest = parts.skip(1).join(':');
-            final numFirst = int.tryParse(first) ?? 0;
-            final padded = numFirst.toString().padLeft(2, '0');
-            val = '$padded:${rest}';
+      // Normalize begin/end attributes into mm:ss.cc (00:00.00)
+      String normalizeVal(String raw) {
+        raw = raw.trim();
+        try {
+          if (raw.contains(':')) {
+            final parts = raw.split(':');
+            if (parts.length == 3) {
+              // hh:mm:ss(.ms)
+              final h = int.tryParse(parts[0]) ?? 0;
+              final m = int.tryParse(parts[1]) ?? 0;
+              final secPart = double.tryParse(parts[2]) ?? 0.0;
+              final totalMs = (h * 3600 * 1000) + (m * 60 * 1000) + (secPart * 1000).round();
+              return _msToTimestamp(totalMs);
+            } else if (parts.length == 2) {
+              // mm:ss(.ms)
+              final m = int.tryParse(parts[0]) ?? 0;
+              final secPart = double.tryParse(parts[1]) ?? 0.0;
+              final totalMs = (m * 60 * 1000) + (secPart * 1000).round();
+              return _msToTimestamp(totalMs);
+            }
           }
-        } else {
-          // No colon -> prefix with 00:
-          val = '00:${val}';
+          // No colon: treat as seconds(.ms)
+          final secVal = double.tryParse(raw) ?? 0.0;
+          final totalMs = (secVal * 1000).round();
+          return _msToTimestamp(totalMs);
+        } catch (e) {
+          return raw;
         }
+      }
 
-        return '${attr}="${val}"';
+      return s.replaceAllMapped(RegExp(r'(?:\b(begin|end)\s*=\s*\")([^\"]+)(\")'), (m) {
+        final attr = m.group(1)!;
+        final raw = m.group(2)!;
+        final norm = normalizeVal(raw);
+        return '${attr}="${norm}"';
       });
     } catch (e) {
       return s;
@@ -298,9 +312,7 @@ class KpoeRemoteService {
           : (cur['time'] as int) + 3000;
       final begin = msToTimestamp(cur['time']);
       final end = msToTimestamp(nextTime);
-      sb.writeln(
-        '      <p begin="${begin}" end="${end}">${esc(cur['text'] ?? '')}</p>',
-      );
+        sb.writeln('      <p begin="${begin}" end="${end}">${esc(cur['text'] ?? '')}</p>');
     }
 
     sb.writeln('    </div>');
@@ -310,14 +322,15 @@ class KpoeRemoteService {
   }
 
   static String _msToTimestamp(num ms) {
+    // Convert milliseconds to mm:ss.cc (centiseconds) format like 00:00.00
     final totalMs = ms.toInt();
-    final msPart = totalMs % 1000;
-    final totalSec = totalMs ~/ 1000;
-    final sec = totalSec % 60;
-    final totalMin = totalSec ~/ 60;
-    final min = totalMin % 60;
-    final hour = totalMin ~/ 60;
-    return '${hour.toString().padLeft(2, '0')}:${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}.${msPart.toString().padLeft(3, '0')}';
+    // Round to nearest centisecond (10 ms)
+    final totalCentis = (totalMs + 5) ~/ 10;
+    final centis = totalCentis % 100;
+    final totalSeconds = totalCentis ~/ 100;
+    final sec = totalSeconds % 60;
+    final min = totalSeconds ~/ 60;
+    return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}.${centis.toString().padLeft(2, '0')}';
   }
 
   static String _esc(String s) => s
@@ -356,6 +369,20 @@ class KpoeRemoteService {
     sb.writeln('  </body>');
     sb.writeln('</tt>');
     return sb.toString();
+  }
+
+  // Collapse each <p ...>...</p> block into a single line (no internal newlines)
+  static String _collapseParagraphs(String s) {
+    try {
+      final re = RegExp(r'<p\b[^>]*?>.*?<\/p>', dotAll: true);
+      return s.replaceAllMapped(re, (m) {
+        var block = m.group(0) ?? '';
+        block = block.replaceAll(RegExp(r'\s+'), ' ');
+        return block.trim();
+      });
+    } catch (e) {
+      return s;
+    }
   }
 
   static Future<File> saveStringToDownloads(
