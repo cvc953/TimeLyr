@@ -67,9 +67,10 @@ class KpoeRemoteService {
           artist: artist,
           version: version,
         );
-        return _normalizeTimestampsInString(
-         agregarEspacioEntreSpans(_ensureXmlDeclaration(_formatXml(ttml)))
-        );
+        final marked = _markInterSpanSpaces(ttml);
+        final formatted = _formatXml(marked);
+        final restored = _restoreInterSpanSpaces(formatted);
+        return _normalizeTimestampsInString(_ensureXmlDeclaration(restored));
       }
       final ttml = _minimalTtmlFromText(
         jsonString,
@@ -77,20 +78,18 @@ class KpoeRemoteService {
         artist: artist,
         version: version,
       );
-      return _normalizeTimestampsInString(
-        agregarEspacioEntreSpans(
-          _ensureXmlDeclaration(_formatXml(ttml)))
-      );
+      final marked = _markInterSpanSpaces(ttml);
+      final formatted = _formatXml(marked);
+      final restored = _restoreInterSpanSpaces(formatted);
+      return _normalizeTimestampsInString(_ensureXmlDeclaration(restored));
     }
 
     if (root.containsKey('ttml') && root['ttml'] is String) {
-      return _normalizeTimestampsInString(
-        agregarEspacioEntreSpans(
-          _ensureXmlDeclaration(
-            _formatXml(root['ttml'] as String),
-          ),
-        ),
-      );
+      final rawTtml = root['ttml'] as String;
+      final marked = _markInterSpanSpaces(rawTtml);
+      final formatted = _formatXml(marked);
+      final restored = _restoreInterSpanSpaces(formatted);
+      return _normalizeTimestampsInString(_ensureXmlDeclaration(restored));
     }
 
     final lyrics =
@@ -136,11 +135,11 @@ class KpoeRemoteService {
     sb.writeln('  </body>');
     sb.writeln('</tt>');
 
-    return _normalizeTimestampsInString(
-      agregarEspacioEntreSpans(_ensureXmlDeclaration(_formatXml(sb.toString()))),
-    );
+    final marked = _markInterSpanSpaces(sb.toString());
+    final formatted = _formatXml(marked);
+    final restored = _restoreInterSpanSpaces(formatted);
+    return _normalizeTimestampsInString(_ensureXmlDeclaration(restored));
   }
-
 
   static String _ensureXmlDeclaration(String s) {
     final trimmed = s.trimLeft();
@@ -408,18 +407,21 @@ class KpoeRemoteService {
   static String _formatXml(String xml) {
     try {
       // Reemplaza > < por >\n< excepto si es <span>
-      var s = xml.replaceAllMapped(
-        RegExp(r'>(\s*)<'),
-        (m) {
-          // Si la siguiente etiqueta es <span, no agregues salto de línea
-          final after = xml.substring(m.end, m.end + 5 > xml.length ? xml.length : m.end + 5);
-          if (after.startsWith('span')) return '><';
-          // Si la anterior es </span>, tampoco agregues salto de línea
-          final before = xml.substring(m.start - 6 < 0 ? 0 : m.start - 6, m.start);
-          if (before.endsWith('/span')) return '><';
-          return '>\n<';
-        },
-      );
+      var s = xml.replaceAllMapped(RegExp(r'>(\s*)<'), (m) {
+        // Si la siguiente etiqueta es <span, no agregues salto de línea
+        final after = xml.substring(
+          m.end,
+          m.end + 5 > xml.length ? xml.length : m.end + 5,
+        );
+        if (after.startsWith('span')) return '><';
+        // Si la anterior es </span>, tampoco agregues salto de línea
+        final before = xml.substring(
+          m.start - 6 < 0 ? 0 : m.start - 6,
+          m.start,
+        );
+        if (before.endsWith('/span')) return '><';
+        return '>\n<';
+      });
       // Ahora, para cada línea, solo indenta si no es <span> ni </span>
       final lines = s.split('\n');
       final sb = StringBuffer();
@@ -463,39 +465,61 @@ class KpoeRemoteService {
       return xml;
     }
   }
-  
-    /// Procesa un string XML y agrega espacio al final de la palabra dentro de <span> solo si hay espacio entre ese <span> y el siguiente.
-    static String agregarEspacioEntreSpans(String xml) {
-      final spanRegex = RegExp(r'<span[^>]*>([^<]*)<\/span>');
-      final buffer = StringBuffer();
-      int lastEnd = 0;
-      final matches = spanRegex.allMatches(xml).toList();
-  
-      for (int i = 0; i < matches.length; i++) {
-        final match = matches[i];
-        // Añade el texto entre el final del último match y el inicio del actual
-        buffer.write(xml.substring(lastEnd, match.start));
-        String palabra = match.group(1)!;
-        String spanTag = match.group(0)!;
-        // Verifica si hay espacio después del span actual
-        bool hayEspacio = false;
-        if (i < matches.length - 1) {
-          int afterSpan = match.end;
-          int nextSpanStart = matches[i + 1].start;
-          String entreSpans = xml.substring(afterSpan, nextSpanStart);
-          hayEspacio = entreSpans.contains(' ');
-        }
-        // Si hay espacio, agrega espacio al final de la palabra
-        if (hayEspacio) {
-          // Reconstruye el span con espacio
-          spanTag = spanTag.replaceFirst('>$palabra<', '>${palabra} <');
-        }
-        buffer.write(spanTag);
-        lastEnd = match.end;
-      }
-      // Añade el resto del texto
-      buffer.write(xml.substring(lastEnd));
-      return buffer.toString();
+
+  // Marca los lugares donde entre dos spans había espacios originalmente,
+  // para preservarlos durante el formateo (que puede normalizar/eliminar
+  // espacios entre etiquetas). Se usa un placeholder HTML comment.
+  static String _markInterSpanSpaces(String s) {
+    try {
+      return s.replaceAllMapped(
+        RegExp(r'</span>\s+<span'),
+        (m) => '</span><!--SPL--><span',
+      );
+    } catch (e) {
+      return s;
     }
-  
+  }
+
+  // Restaura el marcador por un espacio real después del formateo.
+  static String _restoreInterSpanSpaces(String s) {
+    try {
+      return s.replaceAll('<!--SPL-->', ' ');
+    } catch (e) {
+      return s;
+    }
+  }
+
+  /// Procesa un string XML y agrega espacio al final de la palabra dentro de <span> solo si hay espacio entre ese <span> y el siguiente.
+  static String agregarEspacioEntreSpans(String xml) {
+    final spanRegex = RegExp(r'<span[^>]*>([^<]*)<\/span>');
+    final buffer = StringBuffer();
+    int lastEnd = 0;
+    final matches = spanRegex.allMatches(xml).toList();
+
+    for (int i = 0; i < matches.length; i++) {
+      final match = matches[i];
+      // Añade el texto entre el final del último match y el inicio del actual
+      buffer.write(xml.substring(lastEnd, match.start));
+      String palabra = match.group(1)!;
+      String spanTag = match.group(0)!;
+      // Verifica si hay espacio después del span actual
+      bool hayEspacio = false;
+      if (i < matches.length - 1) {
+        int afterSpan = match.end;
+        int nextSpanStart = matches[i + 1].start;
+        String entreSpans = xml.substring(afterSpan, nextSpanStart);
+        hayEspacio = entreSpans.contains(' ');
+      }
+      // Si hay espacio, agrega espacio al final de la palabra
+      if (hayEspacio) {
+        // Reconstruye el span con espacio
+        spanTag = spanTag.replaceFirst('>$palabra<', '>${palabra} <');
+      }
+      buffer.write(spanTag);
+      lastEnd = match.end;
+    }
+    // Añade el resto del texto
+    buffer.write(xml.substring(lastEnd));
+    return buffer.toString();
+  }
 }
