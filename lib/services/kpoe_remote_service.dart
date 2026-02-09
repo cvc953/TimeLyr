@@ -413,21 +413,49 @@ class KpoeRemoteService {
               await getApplicationDocumentsDirectory();
         final file = File('${dir.path}/$filename');
         await file.create(recursive: true);
-        final toWrite = _looksLikeTtml(content) ? _formatXml(content) : content;
+        String toWrite = content;
+        if (_looksLikeTtml(content)) {
+          // Normalize pipeline: ensure declaration, format, restore markers,
+          // collapse paragraphs and normalize timestamps before saving.
+          toWrite = _markInterSpanSpaces(content);
+          toWrite = _formatXml(toWrite);
+          toWrite = _restoreInterSpanSpaces(toWrite);
+          toWrite = _collapseParagraphs(toWrite);
+          toWrite = _ensureXmlDeclaration(toWrite);
+          toWrite = _normalizeTimestampsInString(toWrite);
+        }
         await file.writeAsString(toWrite, flush: true);
         return file;
       } else {
         final dir = await getApplicationDocumentsDirectory();
         final file = File('${dir.path}/$filename');
         await file.create(recursive: true);
-        await file.writeAsString(content, flush: true);
+        String toWrite = content;
+        if (_looksLikeTtml(content)) {
+          toWrite = _markInterSpanSpaces(content);
+          toWrite = _formatXml(toWrite);
+          toWrite = _restoreInterSpanSpaces(toWrite);
+          toWrite = _collapseParagraphs(toWrite);
+          toWrite = _ensureXmlDeclaration(toWrite);
+          toWrite = _normalizeTimestampsInString(toWrite);
+        }
+        await file.writeAsString(toWrite, flush: true);
         return file;
       }
     } catch (e) {
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/$filename');
       await file.create(recursive: true);
-      await file.writeAsString(content, flush: true);
+      String toWrite = content;
+      if (_looksLikeTtml(content)) {
+        toWrite = _markInterSpanSpaces(content);
+        toWrite = _formatXml(toWrite);
+        toWrite = _restoreInterSpanSpaces(toWrite);
+        toWrite = _collapseParagraphs(toWrite);
+        toWrite = _ensureXmlDeclaration(toWrite);
+        toWrite = _normalizeTimestampsInString(toWrite);
+      }
+      await file.writeAsString(toWrite, flush: true);
       return file;
     }
   }
