@@ -414,13 +414,14 @@ class KpoeRemoteService {
         final file = File('${dir.path}/$filename');
         await file.create(recursive: true);
         String toWrite = content;
-        if (_looksLikeTtml(content)) {
-          // Normalize pipeline: ensure declaration, format, restore markers,
-          // collapse paragraphs and normalize timestamps before saving.
-          toWrite = _markInterSpanSpaces(content);
+        final extracted = _extractTtmlFromJson(content);
+        if (extracted != null) toWrite = extracted;
+        if (_looksLikeTtml(toWrite)) {
+          toWrite = _markInterSpanSpaces(toWrite);
           toWrite = _formatXml(toWrite);
           toWrite = _restoreInterSpanSpaces(toWrite);
           toWrite = _collapseParagraphs(toWrite);
+          toWrite = _isolateParagraphs(toWrite);
           toWrite = _ensureXmlDeclaration(toWrite);
           toWrite = _normalizeTimestampsInString(toWrite);
         }
@@ -431,11 +432,14 @@ class KpoeRemoteService {
         final file = File('${dir.path}/$filename');
         await file.create(recursive: true);
         String toWrite = content;
-        if (_looksLikeTtml(content)) {
-          toWrite = _markInterSpanSpaces(content);
+        final extracted2 = _extractTtmlFromJson(content);
+        if (extracted2 != null) toWrite = extracted2;
+        if (_looksLikeTtml(toWrite)) {
+          toWrite = _markInterSpanSpaces(toWrite);
           toWrite = _formatXml(toWrite);
           toWrite = _restoreInterSpanSpaces(toWrite);
           toWrite = _collapseParagraphs(toWrite);
+          toWrite = _isolateParagraphs(toWrite);
           toWrite = _ensureXmlDeclaration(toWrite);
           toWrite = _normalizeTimestampsInString(toWrite);
         }
@@ -447,11 +451,14 @@ class KpoeRemoteService {
       final file = File('${dir.path}/$filename');
       await file.create(recursive: true);
       String toWrite = content;
-      if (_looksLikeTtml(content)) {
-        toWrite = _markInterSpanSpaces(content);
+      final extracted3 = _extractTtmlFromJson(content);
+      if (extracted3 != null) toWrite = extracted3;
+      if (_looksLikeTtml(toWrite)) {
+        toWrite = _markInterSpanSpaces(toWrite);
         toWrite = _formatXml(toWrite);
         toWrite = _restoreInterSpanSpaces(toWrite);
         toWrite = _collapseParagraphs(toWrite);
+        toWrite = _isolateParagraphs(toWrite);
         toWrite = _ensureXmlDeclaration(toWrite);
         toWrite = _normalizeTimestampsInString(toWrite);
       }
@@ -465,6 +472,47 @@ class KpoeRemoteService {
     return trimmed.startsWith('<?xml') ||
         trimmed.startsWith('<tt') ||
         trimmed.contains('<tt ');
+  }
+
+  // Ensure each <p...>...</p> block appears on its own line and remove
+  // stray internal newlines/extra spacing inside paragraphs.
+  static String _isolateParagraphs(String s) {
+    try {
+      return s.replaceAllMapped(
+        RegExp(r'<div[^>]*>([\s\S]*?)<\/div>', multiLine: true),
+        (m) {
+          final start = RegExp(
+            r'<div[^>]*>',
+          ).firstMatch(m.group(0)!)!.group(0)!;
+          final inner = m.group(1) ?? '';
+          final end = '</div>';
+          final processed = inner.replaceAllMapped(
+            RegExp(r'<p\b[^>]*>.*?<\/p>', dotAll: true),
+            (pm) => pm.group(0)!.replaceAll(RegExp(r'\s+'), ' ').trim(),
+          );
+          // Put each paragraph on its own line
+          final withLines = processed.replaceAllMapped(
+            RegExp(r'(</p>)\s*(<p)', dotAll: true),
+            (mm) => '${mm.group(1)}\n${mm.group(2)}',
+          );
+          return '$start$withLines$end';
+        },
+      );
+    } catch (e) {
+      return s;
+    }
+  }
+
+  static String? _extractTtmlFromJson(String s) {
+    try {
+      final obj = json.decode(s);
+      if (obj is Map && obj.containsKey('ttml') && obj['ttml'] is String) {
+        return obj['ttml'] as String;
+      }
+    } catch (e) {
+      // Not JSON or parse error: ignore
+    }
+    return null;
   }
 
   static String _formatXml(String xml) {
@@ -550,13 +598,28 @@ class KpoeRemoteService {
   // espacios entre etiquetas). Se usa un placeholder HTML comment.
   static String _markInterSpanSpaces(String s) {
     try {
-      // Inserta un marcador justo antes del cierre </span> cuando haya espacio
-      // literal entre ese </span> y el siguiente <span>, para luego reemplazar
-      // el marcador por un espacio dentro del contenido del span.
-      return s.replaceAllMapped(RegExp(r'>([^<]*)</span>\s+<span'), (m) {
+      // Inserta un marcador para preservar espacios entre spans.
+      // Casos a cubrir:
+      // 1) </span> <span  -> espacio literal entre dos spans
+      // 2) </span><span...></span> <span -> un span vacío usado como separador
+      // 3) >text</span> <span -> texto seguido de espacio y siguiente span
+      var out = s;
+      // empty separator span between two spans
+      out = out.replaceAllMapped(
+        RegExp(r'</span>\s*<span[^>]*>\s*</span>\s*<span', dotAll: true),
+        (m) => '</span><!--SPL--><span',
+      );
+      // general closing span then whitespace then opening span
+      out = out.replaceAllMapped(
+        RegExp(r'</span>\s+<span'),
+        (m) => '</span><!--SPL--><span',
+      );
+      // text inside span followed by space and next span
+      out = out.replaceAllMapped(RegExp(r'>([^<]*)</span>\s+<span'), (m) {
         final inner = m.group(1) ?? '';
         return '>${inner}<!--SPL--></span><span';
       });
+      return out;
     } catch (e) {
       return s;
     }
