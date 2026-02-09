@@ -43,3 +43,16 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+lyric.json
+lyric2_bad.json
+lyric2.json
+user_ttml_app_out.xml
+lyrio/lyric_saved_fixed.xml
+lyrio/lyric_saved.xml
+lyrio/lyric2_postcheck.xml
+lyrio/lyric2_saved_fixed.xml
+lyrio/lyric2_saved.xml
+lyrio/user_ttml_saved_test.xml
+lyrio/build/lyrics_curl_verbose.txt
+lyrio/build/lyrics_response.txt
+lyrio/build/lyrics_headers.txt
