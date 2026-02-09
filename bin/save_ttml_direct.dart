@@ -159,6 +159,19 @@ void main(List<String> args) async {
   out = _isolateParagraphs(out);
   out = _ensureXmlDeclaration(out);
   out = _normalizeTimestampsInString(out);
+  // If any <p> block contains no <span>, abort without writing.
+  final pRe = RegExp(
+    r'<p\b[^>]*>([\s\S]*?)<\/p>',
+    dotAll: true,
+    caseSensitive: false,
+  );
+  for (final m in pRe.allMatches(out)) {
+    final inner = m.group(1) ?? '';
+    if (!RegExp(r'<span\b', caseSensitive: false).hasMatch(inner)) {
+      stderr.writeln('Aborting save: found <p> without <span>');
+      exit(4);
+    }
+  }
   await File(outPath).writeAsString(out);
   print('Wrote: $outPath');
 }
