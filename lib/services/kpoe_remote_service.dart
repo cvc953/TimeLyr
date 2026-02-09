@@ -549,7 +549,7 @@ class KpoeRemoteService {
   // Special exception to signal that save must be aborted without fallback write.
   // Caught and rethrown in saveStringToDownloads so fallback doesn't write the file.
   // Internal only.
-  static Exception _AbortSaveException(String msg) => Exception(msg);
+  // (moved to top-level below)
 
   static String _formatXml(String xml) {
     try {
@@ -703,4 +703,14 @@ class KpoeRemoteService {
     buffer.write(xml.substring(lastEnd));
     return buffer.toString();
   }
+}
+
+// Special exception to signal that save must be aborted without fallback write.
+// Caught and rethrown in saveStringToDownloads so fallback doesn't write the file.
+// Internal only.
+class _AbortSaveException implements Exception {
+  final String message;
+  _AbortSaveException(this.message);
+  @override
+  String toString() => 'AbortSaveException: $message';
 }
