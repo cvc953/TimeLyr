@@ -70,8 +70,8 @@ class KpoeRemoteService {
         final marked = _markInterSpanSpaces(ttml);
         final formatted = _formatXml(marked);
         final restored = _restoreInterSpanSpaces(formatted);
-          final collapsed = _collapseParagraphs(restored);
-          return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
+        final collapsed = _collapseParagraphs(restored);
+        return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
       }
       final ttml = _minimalTtmlFromText(
         jsonString,
@@ -141,8 +141,8 @@ class KpoeRemoteService {
     final marked = _markInterSpanSpaces(sb.toString());
     final formatted = _formatXml(marked);
     final restored = _restoreInterSpanSpaces(formatted);
-      final collapsed = _collapseParagraphs(restored);
-      return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
+    final collapsed = _collapseParagraphs(restored);
+    return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
   }
 
   static String _ensureXmlDeclaration(String s) {
@@ -170,7 +170,10 @@ class KpoeRemoteService {
               final h = int.tryParse(parts[0]) ?? 0;
               final m = int.tryParse(parts[1]) ?? 0;
               final secPart = double.tryParse(parts[2]) ?? 0.0;
-              final totalMs = (h * 3600 * 1000) + (m * 60 * 1000) + (secPart * 1000).round();
+              final totalMs =
+                  (h * 3600 * 1000) +
+                  (m * 60 * 1000) +
+                  (secPart * 1000).round();
               return _msToTimestamp(totalMs);
             } else if (parts.length == 2) {
               // mm:ss(.ms)
@@ -189,12 +192,15 @@ class KpoeRemoteService {
         }
       }
 
-      return s.replaceAllMapped(RegExp(r'(?:\b(begin|end)\s*=\s*\")([^\"]+)(\")'), (m) {
-        final attr = m.group(1)!;
-        final raw = m.group(2)!;
-        final norm = normalizeVal(raw);
-        return '${attr}="${norm}"';
-      });
+      return s.replaceAllMapped(
+        RegExp(r'(?:\b(begin|end)\s*=\s*\")([^\"]+)(\")'),
+        (m) {
+          final attr = m.group(1)!;
+          final raw = m.group(2)!;
+          final norm = normalizeVal(raw);
+          return '${attr}="${norm}"';
+        },
+      );
     } catch (e) {
       return s;
     }
@@ -312,7 +318,9 @@ class KpoeRemoteService {
           : (cur['time'] as int) + 3000;
       final begin = msToTimestamp(cur['time']);
       final end = msToTimestamp(nextTime);
-        sb.writeln('      <p begin="${begin}" end="${end}">${esc(cur['text'] ?? '')}</p>');
+      sb.writeln(
+        '      <p begin="${begin}" end="${end}">${esc(cur['text'] ?? '')}</p>',
+      );
     }
 
     sb.writeln('    </div>');

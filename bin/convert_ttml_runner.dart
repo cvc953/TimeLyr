@@ -48,14 +48,17 @@ String _ensureXmlDeclaration(String s) {
 
 String _normalizeTimestampsInString(String s) {
   try {
-    return s.replaceAllMapped(RegExp(r'(?:\b(begin|end)\s*=\s*\")([^\"]+)(\")'), (m) {
-      final attr = m.group(1)!;
-      final raw = m.group(2)!;
-      final ms = _parseTimeToMs(raw);
-      if (ms == null) return m.group(0)!; // leave unchanged
-      final t = _msToTimestamp(ms);
-      return '${attr}="${t}"';
-    });
+    return s.replaceAllMapped(
+      RegExp(r'(?:\b(begin|end)\s*=\s*\")([^\"]+)(\")'),
+      (m) {
+        final attr = m.group(1)!;
+        final raw = m.group(2)!;
+        final ms = _parseTimeToMs(raw);
+        if (ms == null) return m.group(0)!; // leave unchanged
+        final t = _msToTimestamp(ms);
+        return '${attr}="${t}"';
+      },
+    );
   } catch (e) {
     return s;
   }
@@ -117,10 +120,7 @@ String _formatXml(String xml) {
         m.end + 5 > xml.length ? xml.length : m.end + 5,
       );
       if (after.startsWith('span')) return '><';
-      final before = xml.substring(
-        m.start - 6 < 0 ? 0 : m.start - 6,
-        m.start,
-      );
+      final before = xml.substring(m.start - 6 < 0 ? 0 : m.start - 6, m.start);
       if (before.endsWith('/span')) return '><';
       return '>\n<';
     });
@@ -197,7 +197,9 @@ String _restoreInterSpanSpaces(String s) {
 
 void main(List<String> args) async {
   if (args.isEmpty) {
-    stderr.writeln('Usage: dart bin/convert_ttml_runner.dart /path/to/input.json');
+    stderr.writeln(
+      'Usage: dart bin/convert_ttml_runner.dart /path/to/input.json',
+    );
     exit(2);
   }
   final path = args[0];
