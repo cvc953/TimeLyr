@@ -126,6 +126,8 @@ class FileService {
         String ttmlContent = KpoeRemoteService.convertKpoeJsonToTtml(res.body);
 
         final ttmlFile = File(ttmlPath);
+        // Añadir espacio a las palabras cuando hay separación entre spans
+        ttmlContent = KpoeRemoteService.agregarEspacioEntreSpans(ttmlContent);
         await ttmlFile.writeAsString(ttmlContent);
         return true;
       }
