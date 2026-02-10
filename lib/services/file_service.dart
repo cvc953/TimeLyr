@@ -125,6 +125,11 @@ class FileService {
         // Usar solo una vez el convertidor para asegurar formato correcto.
         String ttmlContent = KpoeRemoteService.convertKpoeJsonToTtml(res.body);
 
+        // No guardar si algún <p> no tiene <span> ni </span>
+        if (KpoeRemoteService._hasParagraphWithoutAnySpan(ttmlContent)) {
+          return false;
+        }
+
         final ttmlFile = File(ttmlPath);
         // Añadir espacio a las palabras cuando hay separación entre spans
         ttmlContent = KpoeRemoteService.agregarEspacioEntreSpans(ttmlContent);

@@ -67,6 +67,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return File("${file.parent.path}/$filename.lrc").existsSync();
   }
 
+  bool hasTtml(Song song) {
+    final file = File(song.path);
+    final filename = p.basenameWithoutExtension(file.path);
+    return File("${file.parent.path}/$filename.ttml").existsSync();
+  }
+
   Future<void> downloadOne(Song song) async {
     setState(() {
       downloadingSongs.add(song.path);
@@ -433,7 +439,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                         const SizedBox(width: 12),
 
                                         // Descarga / loader / check
-                                        lrcExists
+                                        (lrcExists && hasTtml(song))
                                             ? const Icon(
                                                 Icons.check_circle,
                                                 color: Colors.greenAccent,
