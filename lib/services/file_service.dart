@@ -126,7 +126,7 @@ class FileService {
         String ttmlContent = KpoeRemoteService.convertKpoeJsonToTtml(res.body);
 
         // No guardar si algún <p> no tiene <span> ni </span>
-        if (KpoeRemoteService._hasParagraphWithoutAnySpan(ttmlContent)) {
+        if (KpoeRemoteService.hasParagraphWithoutAnySpan(ttmlContent)) {
           return false;
         }
 

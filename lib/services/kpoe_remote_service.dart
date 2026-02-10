@@ -7,6 +7,26 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:timelyr/models/lyric_result.dart';
 
 class KpoeRemoteService {
+  /// Devuelve true si algún <p ...>...</p> no contiene <span> ni </span>.
+  static bool hasParagraphWithoutAnySpan(String s) {
+    try {
+      final re = RegExp(
+        r'<p\b[^>]*>([\s\S]*?)<\/p>',
+        dotAll: true,
+        caseSensitive: false,
+      );
+      for (final m in re.allMatches(s)) {
+        final inner = m.group(1) ?? '';
+        if (!inner.contains('<span') && !inner.contains('</span')) {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
   static const List<String> _kpoeServers = [
     "https://lyricsplus-seven.vercel.app",
     "https://lyricsplus.prjktla.workers.dev",
@@ -29,9 +49,9 @@ class KpoeRemoteService {
 
     final uri = Uri.parse(
       "https://lyricsplus-seven.vercel.app/v1/ttml/get"
-      "?artist_name=${Uri.encodeComponent(safeArtist)}"
-      "&track_name=${Uri.encodeComponent(safeTitle)}"
-      "&album_name=${Uri.encodeComponent(safeAlbum)}"
+      "?title=${Uri.encodeComponent(safeTitle)}"
+      "&artist=${Uri.encodeComponent(safeArtist)}"
+      "&album=${Uri.encodeComponent(safeAlbum)}"
       "&duration=$safeDuration",
     );
 
@@ -402,10 +422,11 @@ class KpoeRemoteService {
       String preExtract = content;
       final extractedPre = _extractTtmlFromJson(content);
       if (extractedPre != null) preExtract = extractedPre;
-      // If it looks like TTML and contains any <p> block without a <span>, abort save.
-      if (_looksLikeTtml(preExtract) && _hasParagraphWithoutSpan(preExtract)) {
+      // Si parece TTML y contiene algún <p> sin <span> ni </span>, abortar guardado.
+      if (_looksLikeTtml(preExtract) &&
+          hasParagraphWithoutAnySpan(preExtract)) {
         throw _AbortSaveException(
-          'TTML contains <p> without <span>; aborting save',
+          'TTML contiene <p> sin <span> ni </span>; abortando guardado',
         );
       }
       if (Platform.isAndroid) {
@@ -527,7 +548,7 @@ class KpoeRemoteService {
   }
 
   // Returns true if any <p ...>...</p> block contains NO <span> tags.
-  static bool _hasParagraphWithoutSpan(String s) {
+  static bool hasParagraphWithoutSpan(String s) {
     try {
       final re = RegExp(
         r'<p\b[^>]*>([\s\S]*?)<\/p>',
