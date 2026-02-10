@@ -25,6 +25,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Set<String> downloadingSongs = {};
   final Map<String, Uint8List?> artworkCache = {};
   final dm = DownloadManager.instance;
+  double ttmlProgress = 0.0;
 
   @override
   void dispose() {
@@ -146,6 +147,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       setState(() => dm.progress = p);
     });
 
+    // Progreso TTML
+    int ttmlCompleted = 0;
+    final totalTtml = filteredSongs.length;
+
     setState(() {
       downloadingAll = true;
     });
@@ -155,9 +160,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     // Para las canciones que ya tienen LRC, intentar descargar/guardar solo el TTML
     try {
-      final futures = listWithLrc.map(
-        (s) => FileService.saveTTMLForSong(s.path, s),
-      );
+      final futures = listWithLrc.map((s) async {
+        final result = await FileService.saveTTMLForSong(s.path, s);
+        ttmlCompleted++;
+        setState(() {
+          ttmlProgress = ttmlCompleted / totalTtml;
+        });
+        return result;
+      });
       await Future.wait(futures);
     } catch (_) {}
 
@@ -284,6 +294,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
               const SizedBox(height: 10),
 
+              // PROGRESO TTML
+              if (dm.isRunning)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  child: LinearProgressIndicator(
+                    value: ttmlProgress,
+                    color: Colors.blueAccent,
+                    backgroundColor: Colors.white24,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
               // LISTA FILTRADA
               Expanded(
                 child: filteredSongs.isEmpty
