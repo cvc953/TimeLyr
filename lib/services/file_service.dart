@@ -122,14 +122,8 @@ class FileService {
       final res = await http.get(Uri.parse(url));
 
       if (res.statusCode == 200) {
-        // Normalize the response into a proper TTML string. The server may
-        // return raw TTML, a JSON envelope with `ttml`, or a KPoe-style JSON
-        // structure. Use the shared converter to produce clean TTML.
+        // Usar solo una vez el convertidor para asegurar formato correcto.
         String ttmlContent = KpoeRemoteService.convertKpoeJsonToTtml(res.body);
-
-        // Redundantly normalize/format again before writing to disk to ensure
-        // timestamps, XML declaration and spacing are correct.
-        ttmlContent = KpoeRemoteService.convertKpoeJsonToTtml(ttmlContent);
 
         final ttmlFile = File(ttmlPath);
         await ttmlFile.writeAsString(ttmlContent);

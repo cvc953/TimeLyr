@@ -67,9 +67,9 @@ class KpoeRemoteService {
           artist: artist,
           version: version,
         );
-        final marked = _markInterSpanSpaces(ttml);
+        final marked = markInterSpanSpaces(ttml);
         final formatted = _formatXml(marked);
-        final restored = _restoreInterSpanSpaces(formatted);
+        final restored = restoreInterSpanSpaces(formatted);
         final collapsed = _collapseParagraphs(restored);
         return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
       }
@@ -79,18 +79,18 @@ class KpoeRemoteService {
         artist: artist,
         version: version,
       );
-      final marked = _markInterSpanSpaces(ttml);
+      final marked = markInterSpanSpaces(ttml);
       final formatted = _formatXml(marked);
-      final restored = _restoreInterSpanSpaces(formatted);
+      final restored = restoreInterSpanSpaces(formatted);
       final collapsed = _collapseParagraphs(restored);
       return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
     }
 
     if (root.containsKey('ttml') && root['ttml'] is String) {
       final rawTtml = root['ttml'] as String;
-      final marked = _markInterSpanSpaces(rawTtml);
+      final marked = markInterSpanSpaces(rawTtml);
       final formatted = _formatXml(marked);
-      final restored = _restoreInterSpanSpaces(formatted);
+      final restored = restoreInterSpanSpaces(formatted);
       final collapsed = _collapseParagraphs(restored);
       return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
     }
@@ -138,9 +138,9 @@ class KpoeRemoteService {
     sb.writeln('  </body>');
     sb.writeln('</tt>');
 
-    final marked = _markInterSpanSpaces(sb.toString());
+    final marked = markInterSpanSpaces(sb.toString());
     final formatted = _formatXml(marked);
-    final restored = _restoreInterSpanSpaces(formatted);
+    final restored = restoreInterSpanSpaces(formatted);
     final collapsed = _collapseParagraphs(restored);
     return _normalizeTimestampsInString(_ensureXmlDeclaration(collapsed));
   }
@@ -427,9 +427,9 @@ class KpoeRemoteService {
         final extracted = _extractTtmlFromJson(content);
         if (extracted != null) toWrite = extracted;
         if (_looksLikeTtml(toWrite)) {
-          toWrite = _markInterSpanSpaces(toWrite);
+          toWrite = markInterSpanSpaces(toWrite);
           toWrite = _formatXml(toWrite);
-          toWrite = _restoreInterSpanSpaces(toWrite);
+          toWrite = restoreInterSpanSpaces(toWrite);
           toWrite = _collapseParagraphs(toWrite);
           toWrite = _isolateParagraphs(toWrite);
           toWrite = _ensureXmlDeclaration(toWrite);
@@ -445,9 +445,9 @@ class KpoeRemoteService {
         final extracted2 = _extractTtmlFromJson(content);
         if (extracted2 != null) toWrite = extracted2;
         if (_looksLikeTtml(toWrite)) {
-          toWrite = _markInterSpanSpaces(toWrite);
+          toWrite = markInterSpanSpaces(toWrite);
           toWrite = _formatXml(toWrite);
-          toWrite = _restoreInterSpanSpaces(toWrite);
+          toWrite = restoreInterSpanSpaces(toWrite);
           toWrite = _collapseParagraphs(toWrite);
           toWrite = _isolateParagraphs(toWrite);
           toWrite = _ensureXmlDeclaration(toWrite);
@@ -465,9 +465,9 @@ class KpoeRemoteService {
       final extracted3 = _extractTtmlFromJson(content);
       if (extracted3 != null) toWrite = extracted3;
       if (_looksLikeTtml(toWrite)) {
-        toWrite = _markInterSpanSpaces(toWrite);
+        toWrite = markInterSpanSpaces(toWrite);
         toWrite = _formatXml(toWrite);
-        toWrite = _restoreInterSpanSpaces(toWrite);
+        toWrite = restoreInterSpanSpaces(toWrite);
         toWrite = _collapseParagraphs(toWrite);
         toWrite = _isolateParagraphs(toWrite);
         toWrite = _ensureXmlDeclaration(toWrite);
@@ -632,7 +632,7 @@ class KpoeRemoteService {
   // Marca los lugares donde entre dos spans había espacios originalmente,
   // para preservarlos durante el formateo (que puede normalizar/eliminar
   // espacios entre etiquetas). Se usa un placeholder HTML comment.
-  static String _markInterSpanSpaces(String s) {
+  static String markInterSpanSpaces(String s) {
     try {
       // Inserta un marcador para preservar espacios entre spans.
       // Casos a cubrir:
@@ -662,7 +662,7 @@ class KpoeRemoteService {
   }
 
   // Restaura el marcador por un espacio real después del formateo.
-  static String _restoreInterSpanSpaces(String s) {
+  static String restoreInterSpanSpaces(String s) {
     try {
       return s.replaceAll('<!--SPL-->', ' ');
     } catch (e) {
