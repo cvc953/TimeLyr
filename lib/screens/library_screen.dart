@@ -29,6 +29,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   void dispose() {
+    _librarySub?.cancel();
     super.dispose();
   }
 
@@ -39,7 +40,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
     filteredSongs = List.from(allSongs);
     filteredSongs.sort((a, b) => a.title.compareTo(b.title));
     loadArtworkCache();
+    // Escuchar cambios en la librería (p. ej. watcher en background)
+    _librarySub = FileService.libraryUpdateController.stream.listen((_) async {
+      allSongs = FileService.librarySongs;
+      filteredSongs = List.from(allSongs);
+      filteredSongs.sort((a, b) => a.title.compareTo(b.title));
+      await loadArtworkCache();
+      setState(() {});
+    });
   }
+
+  StreamSubscription<void>? _librarySub;
 
   Future<void> loadArtworkCache() async {
     for (var song in allSongs) {

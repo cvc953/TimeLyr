@@ -126,6 +126,10 @@ class _MoreScreenState extends State<MoreScreen> {
             title: Text('Escaneo en segundo plano', style: TextStyle(color: Colors.white)),
             trailing: Switch(
               value: watcherEnabled,
+              activeColor: Colors.blueAccent,
+              activeTrackColor: Colors.blueAccent.withOpacity(0.25),
+              inactiveThumbColor: Colors.white70,
+              inactiveTrackColor: Colors.white24,
               onChanged: (v) async {
                 watcherEnabled = v;
                 await AppStorage.saveWatcherEnabled(v);

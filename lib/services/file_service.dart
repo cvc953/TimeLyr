@@ -14,11 +14,14 @@ class FileService {
   static StreamSubscription<FileSystemEvent>? _watcher;
   // Ajustable para controlar paralelismo durante el escaneo
   static int scanConcurrency = 6;
+  // Stream para notificar cambios en la librería (añadidos/actualizaciones)
+  static final StreamController<void> libraryUpdateController = StreamController<void>.broadcast();
 
   static Future<void> scanMusicWithCallback(
     String rootPath, {
     required Function(String path, int scanned, int found) onScan,
   }) async {
+    // Restaurado: escaneo secuencial como estaba originalmente (más fiable en primer arranque)
     final dir = Directory(rootPath);
     List<Song> songs = [];
 
@@ -26,12 +29,11 @@ class FileService {
     final cached = await SongDatabase.load();
     final Map<String, Song> cachedByPath = {for (var s in cached) s.path: s};
 
-    // Primero hacer un listado de archivos (rápido) y luego procesar metadata en paralelo
-    final List<String> audioPaths = [];
     int scanned = 0;
 
     await for (var entity in dir.list(recursive: true)) {
       scanned++;
+
       onScan(entity.path, scanned, songs.length);
 
       if (entity is File &&
@@ -39,68 +41,41 @@ class FileService {
               entity.path.endsWith('.flac') ||
               entity.path.endsWith('.m4a') ||
               entity.path.endsWith('.wav'))) {
-        audioPaths.add(entity.path);
-      }
-    }
-
-    // Procesar metadata en lotes para mantener concurrencia limitada
-    final int concurrency = scanConcurrency;
-    final int total = audioPaths.length;
-
-    for (int i = 0; i < total; i += concurrency) {
-      final end = (i + concurrency) > total ? total : i + concurrency;
-      final batch = audioPaths.sublist(i, end);
-
-      final futures = batch.map((path) async {
         try {
-          final file = File(path);
-          final stat = await file.stat();
-          final int modifiedMs = stat.modified.millisecondsSinceEpoch;
-          final int size = stat.size;
-
-          // Si existe en caché y no ha cambiado, reutilizar
-          final cachedSong = cachedByPath[path];
-          if (cachedSong != null &&
-              (cachedSong.modifiedMs == modifiedMs) &&
-              (cachedSong.size == size)) {
-            songs.add(cachedSong);
-            // Actualizar UI
-            onScan(path, scanned, songs.length);
-            return;
+          // Si ya existe en caché, reutilizar la entrada sin leer metadata
+          if (cachedByPath.containsKey(entity.path)) {
+            songs.add(cachedByPath[entity.path]!);
+            continue;
           }
 
-          final metadata = await MetadataGod.readMetadata(file: path);
+          final metadata = await MetadataGod.readMetadata(file: entity.path);
 
           if (metadata.picture?.data != null) {
-            ArtworkCache.save(path, metadata.picture!.data);
+            ArtworkCache.save(entity.path, metadata.picture!.data);
           }
 
-          final song = Song(
-            path: path,
-            title: metadata.title ??
-                file.uri.pathSegments.last.replaceAll(
-                  RegExp(r'\.(mp3|flac|m4a|wav)$'),
-                  '',
-                ),
-            artist: metadata.artist ?? '',
-            album: metadata.album ?? '',
-            durationSeconds: (metadata.durationMs ?? 0) ~/ 1000,
-            modifiedMs: modifiedMs,
-            size: size,
+          songs.add(
+            Song(
+              path: entity.path,
+              title: metadata.title ??
+                  entity.uri.pathSegments.last.replaceAll(
+                    RegExp(r'\.(mp3|flac|m4a|wav)$'),
+                    '',
+                  ),
+              artist: metadata.artist ?? '',
+              album: metadata.album ?? '',
+              durationSeconds: (metadata.durationMs ?? 0) ~/ 1000,
+              modifiedMs: (await entity.stat()).modified.millisecondsSinceEpoch,
+              size: (await entity.stat()).size,
+            ),
           );
-
-          songs.add(song);
-          onScan(path, scanned, songs.length);
         } catch (_) {}
-      }).toList();
-
-      try {
-        await Future.wait(futures);
-      } catch (_) {}
+      }
     }
 
     librarySongs = songs;
     await SongDatabase.save(songs);
+    libraryUpdateController.add(null);
   }
 
   /// Procesa un único archivo de audio e intenta añadirlo a la librería.
@@ -142,6 +117,9 @@ class FileService {
 
       // Guardar inmediatamente la base actualizada
       await SongDatabase.save(librarySongs);
+
+      // Notificar a la UI que la librería cambió
+      libraryUpdateController.add(null);
 
       return song;
     } catch (_) {
