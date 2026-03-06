@@ -4,13 +4,16 @@ import 'package:timelyr/utils/song_database.dart';
 import 'package:metadata_god/metadata_god.dart';
 import '../models/song.dart';
 import 'dart:typed_data';
-import 'dart:convert';
+import 'dart:async';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
 import 'package:timelyr/services/kpoe_remote_service.dart';
 
 class FileService {
   static List<Song> librarySongs = [];
+  static StreamSubscription<FileSystemEvent>? _watcher;
+  // Ajustable para controlar paralelismo durante el escaneo
+  static int scanConcurrency = 6;
 
   static Future<void> scanMusicWithCallback(
     String rootPath, {
@@ -19,50 +22,154 @@ class FileService {
     final dir = Directory(rootPath);
     List<Song> songs = [];
 
+    // Cargar canciones ya guardadas para evitar releer metadata innecesaria
+    final cached = await SongDatabase.load();
+    final Map<String, Song> cachedByPath = {for (var s in cached) s.path: s};
+
+    // Primero hacer un listado de archivos (rápido) y luego procesar metadata en paralelo
+    final List<String> audioPaths = [];
     int scanned = 0;
 
     await for (var entity in dir.list(recursive: true)) {
       scanned++;
-
       onScan(entity.path, scanned, songs.length);
 
-      //print("Leyendo: ${entity.path}");
-
       if (entity is File &&
-          (entity.path.endsWith(".mp3") ||
-              entity.path.endsWith(".flac") ||
-              entity.path.endsWith(".m4a") ||
-              entity.path.endsWith(".wav"))) {
+          (entity.path.endsWith('.mp3') ||
+              entity.path.endsWith('.flac') ||
+              entity.path.endsWith('.m4a') ||
+              entity.path.endsWith('.wav'))) {
+        audioPaths.add(entity.path);
+      }
+    }
+
+    // Procesar metadata en lotes para mantener concurrencia limitada
+    final int concurrency = scanConcurrency;
+    final int total = audioPaths.length;
+
+    for (int i = 0; i < total; i += concurrency) {
+      final end = (i + concurrency) > total ? total : i + concurrency;
+      final batch = audioPaths.sublist(i, end);
+
+      final futures = batch.map((path) async {
         try {
-          final metadata = await MetadataGod.readMetadata(file: entity.path);
+          final file = File(path);
+          final stat = await file.stat();
+          final int modifiedMs = stat.modified.millisecondsSinceEpoch;
+          final int size = stat.size;
 
-          //final art = metadata.picture?.data;
-
-          if (metadata.picture?.data != null) {
-            ArtworkCache.save(entity.path, metadata.picture!.data);
+          // Si existe en caché y no ha cambiado, reutilizar
+          final cachedSong = cachedByPath[path];
+          if (cachedSong != null &&
+              (cachedSong.modifiedMs == modifiedMs) &&
+              (cachedSong.size == size)) {
+            songs.add(cachedSong);
+            // Actualizar UI
+            onScan(path, scanned, songs.length);
+            return;
           }
 
-          songs.add(
-            Song(
-              path: entity.path,
-              title:
-                  metadata.title ??
-                  entity.uri.pathSegments.last.replaceAll(
-                    RegExp(r'\.(mp3|flac|m4a|wav)$'),
-                    '',
-                  ),
-              artist: metadata.artist ?? "",
-              album: metadata.album ?? "",
-              durationSeconds: (metadata.durationMs ?? 0) ~/ 1000,
-            ),
+          final metadata = await MetadataGod.readMetadata(file: path);
+
+          if (metadata.picture?.data != null) {
+            ArtworkCache.save(path, metadata.picture!.data);
+          }
+
+          final song = Song(
+            path: path,
+            title: metadata.title ??
+                file.uri.pathSegments.last.replaceAll(
+                  RegExp(r'\.(mp3|flac|m4a|wav)$'),
+                  '',
+                ),
+            artist: metadata.artist ?? '',
+            album: metadata.album ?? '',
+            durationSeconds: (metadata.durationMs ?? 0) ~/ 1000,
+            modifiedMs: modifiedMs,
+            size: size,
           );
+
+          songs.add(song);
+          onScan(path, scanned, songs.length);
         } catch (_) {}
-      }
+      }).toList();
+
+      try {
+        await Future.wait(futures);
+      } catch (_) {}
     }
 
     librarySongs = songs;
     await SongDatabase.save(songs);
-    //final art = await ArtworkCache.load(songs[0].path);
+  }
+
+  /// Procesa un único archivo de audio e intenta añadirlo a la librería.
+  static Future<Song?> processSingleFile(String path) async {
+    try {
+      final file = File(path);
+
+      if (!file.existsSync()) return null;
+
+      if (!(path.endsWith('.mp3') ||
+          path.endsWith('.flac') ||
+          path.endsWith('.m4a') ||
+          path.endsWith('.wav'))) return null;
+
+      // Si ya está indexado, no hacer nada
+      if (librarySongs.any((s) => s.path == path)) return null;
+
+      // Dar pequeño retraso para archivos que aún se estén escribiendo
+      await Future.delayed(const Duration(milliseconds: 350));
+
+      final metadata = await MetadataGod.readMetadata(file: path);
+
+      if (metadata.picture?.data != null) {
+        ArtworkCache.save(path, metadata.picture!.data);
+      }
+
+      final stat = await file.stat();
+      final song = Song(
+        path: path,
+        title: metadata.title ?? file.uri.pathSegments.last.replaceAll(RegExp(r'\.(mp3|flac|m4a|wav)$'), ''),
+        artist: metadata.artist ?? '',
+        album: metadata.album ?? '',
+        durationSeconds: (metadata.durationMs ?? 0) ~/ 1000,
+        modifiedMs: stat.modified.millisecondsSinceEpoch,
+        size: stat.size,
+      );
+
+      librarySongs.add(song);
+
+      // Guardar inmediatamente la base actualizada
+      await SongDatabase.save(librarySongs);
+
+      return song;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Inicia un watcher en segundo plano que detecta archivos nuevos/modificados.
+  static void startBackgroundWatcher(String rootPath) {
+    try {
+      stopBackgroundWatcher();
+      final dir = Directory(rootPath);
+      _watcher = dir.watch(recursive: true).listen((event) async {
+        if (event is FileSystemCreateEvent || event is FileSystemModifyEvent) {
+          final evtPath = event.path;
+          if (evtPath.endsWith('.mp3') || evtPath.endsWith('.flac') || evtPath.endsWith('.m4a') || evtPath.endsWith('.wav')) {
+            await processSingleFile(evtPath);
+          }
+        }
+      });
+    } catch (_) {}
+  }
+
+  static void stopBackgroundWatcher() {
+    try {
+      _watcher?.cancel();
+      _watcher = null;
+    } catch (_) {}
   }
 
   static Future<void> saveLRC(String songPath, String lyrics, Song song) async {

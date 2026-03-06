@@ -41,6 +41,8 @@ class _MainScreenState extends State<MainScreen> {
       folder = DefaultMusicPath.defaultPath;
       await AppStorage.saveFolder(folder);
     }
+    // Iniciar watcher en segundo plano para detectar nuevas canciones automáticamente
+    FileService.startBackgroundWatcher(folder);
     setState(() {
       _loading = false;
     });

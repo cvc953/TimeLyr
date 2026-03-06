@@ -4,6 +4,9 @@ class Song {
   final String artist;
   final String album;
   final int durationSeconds;
+  // File stat to detect changes and avoid re-reading metadata when unchanged
+  final int? modifiedMs;
+  final int? size;
 
   Song({
     required this.path,
@@ -11,6 +14,8 @@ class Song {
     required this.artist,
     required this.album,
     required this.durationSeconds,
+    this.modifiedMs,
+    this.size,
   });
 
   Map<String, dynamic> toJson() {
@@ -20,6 +25,8 @@ class Song {
       'artist': artist,
       'album': album,
       'durationSeconds': durationSeconds,
+      'modifiedMs': modifiedMs,
+      'size': size,
     };
   }
 
@@ -29,7 +36,9 @@ class Song {
       title: json['title'],
       artist: json['artist'],
       album: json['album'],
-      durationSeconds: json['durationSeconds'],
+      durationSeconds: json['durationSeconds'] ?? 0,
+      modifiedMs: json['modifiedMs'] ?? json['modified'],
+      size: json['size'],
     );
   }
 }
