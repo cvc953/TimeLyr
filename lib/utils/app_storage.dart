@@ -29,4 +29,17 @@ class AppStorage {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(firstRunKey, false);
   }
+
+  // Watcher enabled preference
+  static const String watcherEnabledKey = "watcher_enabled";
+
+  static Future<void> saveWatcherEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(watcherEnabledKey, enabled);
+  }
+
+  static Future<bool> loadWatcherEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(watcherEnabledKey) ?? true;
+  }
 }

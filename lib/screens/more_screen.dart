@@ -5,6 +5,9 @@ import 'package:timelyr/widgets/select_directory.dart';
 import '../services/notifications_settings.dart';
 import '../widgets/toggleNotifications.dart';
 import '../utils/permissions.dart';
+import '../utils/app_storage.dart';
+import '../services/file_service.dart';
+import '../utils/default_music_path.dart';
 
 class MoreScreen extends StatefulWidget {
   const MoreScreen({super.key});
@@ -15,15 +18,22 @@ class MoreScreen extends StatefulWidget {
 
 class _MoreScreenState extends State<MoreScreen> {
   bool notificationsEnable = true;
+  bool watcherEnabled = true;
 
   @override
   void initState() {
     super.initState();
     enableNotifications();
+    loadWatcherPref();
   }
 
   void enableNotifications() async {
     notificationsEnable = await NotificationSettings.isEnabled();
+    setState(() {});
+  }
+
+  void loadWatcherPref() async {
+    watcherEnabled = await AppStorage.loadWatcherEnabled();
     setState(() {});
   }
 
@@ -107,6 +117,30 @@ class _MoreScreenState extends State<MoreScreen> {
                 builder: (context) => SelectDirectory(),
               );
             },
+          ),
+          ListTile(
+            leading: Icon(
+              watcherEnabled ? Icons.sync : Icons.sync_disabled,
+              color: Colors.white,
+            ),
+            title: Text('Escaneo en segundo plano', style: TextStyle(color: Colors.white)),
+            trailing: Switch(
+              value: watcherEnabled,
+              onChanged: (v) async {
+                watcherEnabled = v;
+                await AppStorage.saveWatcherEnabled(v);
+
+                if (v) {
+                  String? folder = await AppStorage.loadFolder();
+                  if (folder == null) folder = DefaultMusicPath.defaultPath;
+                  FileService.startBackgroundWatcher(folder);
+                } else {
+                  FileService.stopBackgroundWatcher();
+                }
+
+                setState(() {});
+              },
+            ),
           ),
           ListTile(
             leading: Icon(Icons.search, color: Colors.white),
