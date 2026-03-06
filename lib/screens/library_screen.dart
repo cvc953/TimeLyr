@@ -298,7 +298,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ),
                 ),
 
-              const SizedBox(height: 10),
+              const SizedBox(height: 5),
 
               // PROGRESO TTML
               if (dm.isRunning)
