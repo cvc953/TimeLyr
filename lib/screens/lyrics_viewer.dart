@@ -100,7 +100,7 @@ class _LyricsViewerState extends State<LyricsViewer> {
 
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-            child: Container(color: Colors.black.withOpacity(0.4)),
+            child: Container(color: Colors.black.withValues(alpha: 0.4)),
           ),
 
           // Contenido principal

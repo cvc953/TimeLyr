@@ -1,79 +1,76 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'package:timelyr/utils/artwork_cache.dart';
 import 'package:timelyr/utils/song_database.dart';
-import 'package:metadata_god/metadata_god.dart';
+import 'package:timelyr/services/metadata_reader.dart';
 import '../models/song.dart';
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:path/path.dart' as p;
-import 'package:http/http.dart' as http;
 import 'package:timelyr/services/kpoe_remote_service.dart';
 
 class FileService {
   static List<Song> librarySongs = [];
-  static StreamSubscription<FileSystemEvent>? _watcher;
+  static Set<String> indexedPaths = {}; // For O(1) lookups
+  static Future<void> _processingLock =
+      Future.value(); // For sequential processing
+
+  static void setLibrarySongs(List<Song> songs) {
+    librarySongs = songs;
+    indexedPaths = songs.map((s) => s.path).toSet();
+  }
+
   // Ajustable para controlar paralelismo durante el escaneo
   static int scanConcurrency = 6;
   // Stream para notificar cambios en la librería (añadidos/actualizaciones)
-  static final StreamController<void> libraryUpdateController = StreamController<void>.broadcast();
+  static final StreamController<void> libraryUpdateController =
+      StreamController<void>.broadcast();
+
+  // Background scan isolate
+  static Isolate? _scanIsolate;
+  static ReceivePort? _receivePort;
+  static StreamSubscription? _receivePortSubscription;
+  static SendPort? _scanSendPort;
 
   static Future<void> scanMusicWithCallback(
     String rootPath, {
     required Function(String path, int scanned, int found) onScan,
   }) async {
-    // Restaurado: escaneo secuencial como estaba originalmente (más fiable en primer arranque)
-    final dir = Directory(rootPath);
-    List<Song> songs = [];
+    // Usar MediaStore para escanear música rápidamente
+    final List<dynamic> musicList = await MetadataReader.scanMusic();
 
-    // Cargar canciones ya guardadas para evitar releer metadata innecesaria
+    List<Song> songs = [];
     final cached = await SongDatabase.load();
     final Map<String, Song> cachedByPath = {for (var s in cached) s.path: s};
 
-    int scanned = 0;
+    for (int i = 0; i < musicList.length; i++) {
+      final item = musicList[i] as Map<dynamic, dynamic>;
+      final path = item['path'] as String?;
 
-    await for (var entity in dir.list(recursive: true)) {
-      scanned++;
+      if (path == null) continue;
 
-      onScan(entity.path, scanned, songs.length);
+      onScan(path, i + 1, songs.length);
 
-      if (entity is File &&
-          (entity.path.endsWith('.mp3') ||
-              entity.path.endsWith('.flac') ||
-              entity.path.endsWith('.m4a') ||
-              entity.path.endsWith('.wav'))) {
-        try {
-          // Si ya existe en caché, reutilizar la entrada sin leer metadata
-          if (cachedByPath.containsKey(entity.path)) {
-            songs.add(cachedByPath[entity.path]!);
-            continue;
-          }
-
-          final metadata = await MetadataGod.readMetadata(file: entity.path);
-
-          if (metadata.picture?.data != null) {
-            ArtworkCache.save(entity.path, metadata.picture!.data);
-          }
-
-          songs.add(
-            Song(
-              path: entity.path,
-              title: metadata.title ??
-                  entity.uri.pathSegments.last.replaceAll(
-                    RegExp(r'\.(mp3|flac|m4a|wav)$'),
-                    '',
-                  ),
-              artist: metadata.artist ?? '',
-              album: metadata.album ?? '',
-              durationSeconds: (metadata.durationMs ?? 0) ~/ 1000,
-              modifiedMs: (await entity.stat()).modified.millisecondsSinceEpoch,
-              size: (await entity.stat()).size,
-            ),
-          );
-        } catch (_) {}
+      // Si ya existe en caché, reutilizar la entrada
+      if (cachedByPath.containsKey(path)) {
+        songs.add(cachedByPath[path]!);
+        continue;
       }
+
+      final song = Song(
+        path: path,
+        title: item['title'] as String? ?? path.split('/').last,
+        artist: item['artist'] as String? ?? '',
+        album: item['album'] as String? ?? '',
+        durationSeconds: ((item['durationMs'] as num?)?.toInt() ?? 0) ~/ 1000,
+        modifiedMs: DateTime.now().millisecondsSinceEpoch,
+        size: 0,
+      );
+
+      songs.add(song);
     }
 
-    librarySongs = songs;
+    setLibrarySongs(songs);
     await SongDatabase.save(songs);
     libraryUpdateController.add(null);
   }
@@ -81,39 +78,32 @@ class FileService {
   /// Procesa un único archivo de audio e intenta añadirlo a la librería.
   static Future<Song?> processSingleFile(String path) async {
     try {
-      final file = File(path);
+      // Si ya está indexado, no hacer nada (O(1) lookup)
+      if (indexedPaths.contains(path)) return null;
 
-      if (!file.existsSync()) return null;
+      final metadata = await MetadataReader.getMetadata(path);
 
-      if (!(path.endsWith('.mp3') ||
-          path.endsWith('.flac') ||
-          path.endsWith('.m4a') ||
-          path.endsWith('.wav'))) return null;
+      if (metadata == null) return null;
 
-      // Si ya está indexado, no hacer nada
-      if (librarySongs.any((s) => s.path == path)) return null;
-
-      // Dar pequeño retraso para archivos que aún se estén escribiendo
-      await Future.delayed(const Duration(milliseconds: 350));
-
-      final metadata = await MetadataGod.readMetadata(file: path);
-
-      if (metadata.picture?.data != null) {
-        ArtworkCache.save(path, metadata.picture!.data);
+      final artwork = metadata['artwork'];
+      if (artwork != null && artwork is Uint8List) {
+        ArtworkCache.save(path, artwork);
       }
 
-      final stat = await file.stat();
       final song = Song(
         path: path,
-        title: metadata.title ?? file.uri.pathSegments.last.replaceAll(RegExp(r'\.(mp3|flac|m4a|wav)$'), ''),
-        artist: metadata.artist ?? '',
-        album: metadata.album ?? '',
-        durationSeconds: (metadata.durationMs ?? 0) ~/ 1000,
-        modifiedMs: stat.modified.millisecondsSinceEpoch,
-        size: stat.size,
+        title: metadata['title'] as String? ?? path.split('/').last,
+        artist: metadata['artist'] as String? ?? '',
+        album: metadata['album'] as String? ?? '',
+        durationSeconds:
+            ((metadata['durationMs'] as num?)?.toInt() ?? 0) ~/ 1000,
+        modifiedMs: DateTime.now().millisecondsSinceEpoch,
+        size: 0,
       );
 
+      // Ensure sequential processing (already handled by listener)
       librarySongs.add(song);
+      indexedPaths.add(path);
 
       // Guardar inmediatamente la base actualizada
       await SongDatabase.save(librarySongs);
@@ -128,25 +118,89 @@ class FileService {
   }
 
   /// Inicia un watcher en segundo plano que detecta archivos nuevos/modificados.
-  static void startBackgroundWatcher(String rootPath) {
+  static Future<void> startBackgroundWatcher(String rootPath) async {
     try {
       stopBackgroundWatcher();
-      final dir = Directory(rootPath);
-      _watcher = dir.watch(recursive: true).listen((event) async {
-        if (event is FileSystemCreateEvent || event is FileSystemModifyEvent) {
-          final evtPath = event.path;
-          if (evtPath.endsWith('.mp3') || evtPath.endsWith('.flac') || evtPath.endsWith('.m4a') || evtPath.endsWith('.wav')) {
-            await processSingleFile(evtPath);
-          }
+
+      _receivePort = ReceivePort();
+      _receivePortSubscription = _receivePort?.listen((message) {
+        if (message is SendPort) {
+          _scanSendPort = message;
+          // Send the root path to the isolate
+          _scanSendPort?.send(rootPath);
+        } else if (message is String) {
+          // Process new/modified file sequentially
+          _processingLock = _processingLock.then((_) async {
+            await processSingleFile(message);
+          });
         }
       });
+
+      _scanIsolate = await Isolate.spawn(
+        _backgroundScanIsolate,
+        _receivePort!.sendPort,
+      );
     } catch (_) {}
+  }
+
+  static void _backgroundScanIsolate(SendPort sendPort) {
+    final receivePort = ReceivePort();
+    sendPort.send(receivePort.sendPort);
+
+    String? rootPath;
+    final completer = Completer<void>();
+
+    receivePort.listen((message) {
+      if (message is String) {
+        rootPath = message;
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+      }
+    });
+
+    final sentFiles = <String>[];
+
+    void performScan() {
+      if (rootPath == null) return;
+
+      try {
+        final dir = Directory(rootPath!);
+        final files = dir.listSync(recursive: true);
+
+        for (var entity in files) {
+          if (entity is File &&
+              (entity.path.endsWith('.mp3') ||
+                  entity.path.endsWith('.flac') ||
+                  entity.path.endsWith('.m4a') ||
+                  entity.path.endsWith('.wav'))) {
+            if (!sentFiles.contains(entity.path)) {
+              sentFiles.add(entity.path);
+              sendPort.send(entity.path);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    completer.future.then((_) {
+      performScan();
+
+      Timer.periodic(const Duration(seconds: 30), (timer) {
+        performScan();
+      });
+    });
   }
 
   static void stopBackgroundWatcher() {
     try {
-      _watcher?.cancel();
-      _watcher = null;
+      _scanIsolate?.kill(priority: Isolate.immediate);
+      _scanIsolate = null;
+      _receivePortSubscription?.cancel();
+      _receivePortSubscription = null;
+      _receivePort?.close();
+      _receivePort = null;
+      _scanSendPort = null;
     } catch (_) {}
   }
 
@@ -162,26 +216,10 @@ class FileService {
     );
   }
 
-  static String lyricsPlusUrlForSong(Song song) {
-    final params = {
-      'title': song.title ?? '',
-      'artist': song.artist ?? '',
-      'album': song.album ?? '',
-      'duration': (song.durationSeconds ?? 0).toString(),
-    };
-
-    final uri = Uri.https(
-      'lyricsplus-seven.vercel.app',
-      '/v1/ttml/get',
-      params,
-    );
-
-    return uri.toString();
-  }
-
-  /// Descarga el TTML desde la URL dada y lo guarda junto al archivo de la canción
-  /// con la misma base de nombre y extensión `.ttml`.
-  static Future<bool> saveTTMLFromUrl(String songPath, String url) async {
+  static Future<bool> _saveTTMLContent(
+    String songPath,
+    String ttmlContent,
+  ) async {
     try {
       final file = File(songPath);
       final dir = file.parent.path;
@@ -204,40 +242,52 @@ class FileService {
         }
       }
 
-      final res = await http.get(Uri.parse(url));
-
-      if (res.statusCode == 200) {
-        // Usar solo una vez el convertidor para asegurar formato correcto.
-        String ttmlContent = KpoeRemoteService.convertKpoeJsonToTtml(res.body);
-
-        // No guardar si algún <p> no tiene <span> ni </span>
-        if (KpoeRemoteService.hasParagraphWithoutAnySpan(ttmlContent)) {
-          return false;
-        }
-
-        final ttmlFile = File(ttmlPath);
-        // Añadir espacio a las palabras cuando hay separación entre spans
-        ttmlContent = KpoeRemoteService.agregarEspacioEntreSpans(ttmlContent);
-        await ttmlFile.writeAsString(ttmlContent);
-        return true;
+      // No guardar si algún <p> no tiene <span> ni </span>
+      if (KpoeRemoteService.hasParagraphWithoutAnySpan(ttmlContent)) {
+        return false;
       }
 
-      return false;
-    } catch (_) {
+      final ttmlFile = File(ttmlPath);
+      // Añadir espacio a las palabras cuando hay separación entre spans
+      final normalized = KpoeRemoteService.agregarEspacioEntreSpans(
+        ttmlContent,
+      );
+      await ttmlFile.writeAsString(normalized);
+      return true;
+    } catch (e) {
+      // Log error for debugging
+      print('Error saving TTML: $e');
       return false;
     }
   }
 
-  /// Construye la URL para `lyricsplus` y descarga/guarda el TTML para la canción.
   static Future<bool> saveTTMLForSong(String songPath, Song song) async {
-    final url = lyricsPlusUrlForSong(song);
-    return await saveTTMLFromUrl(songPath, url);
+    final ttml = await KpoeRemoteService.fetchFromKpoe(
+      song.title,
+      song.artist,
+      album: song.album,
+      duration: song.durationSeconds <= 0
+          ? ''
+          : song.durationSeconds.toString(),
+    );
+
+    if (ttml == null || ttml.trim().isEmpty) {
+      return false;
+    }
+
+    final converted = KpoeRemoteService.convertKpoeJsonToTtml(
+      ttml,
+      title: song.title,
+      artist: song.artist,
+    );
+
+    return _saveTTMLContent(songPath, converted);
   }
 
   static Future<Uint8List?> loadArtwork(String path) async {
     try {
-      final meta = await MetadataGod.readMetadata(file: path);
-      return meta.picture?.data;
+      final meta = await MetadataReader.getMetadata(path);
+      return meta?['artwork'] as Uint8List?;
     } catch (_) {
       return null;
     }

@@ -3,8 +3,6 @@ import 'package:timelyr/screens/about_screen.dart';
 import 'package:timelyr/widgets/scan_music.dart';
 import 'package:timelyr/widgets/select_directory.dart';
 import '../services/notifications_settings.dart';
-import '../widgets/toggleNotifications.dart';
-import '../utils/permissions.dart';
 import '../utils/app_storage.dart';
 import '../services/file_service.dart';
 import '../utils/default_music_path.dart';
@@ -90,19 +88,19 @@ class _MoreScreenState extends State<MoreScreen> {
               'Notificaciones',
               style: TextStyle(color: Colors.white),
             ),
-            onTap: () async {
-              // Acción al tocar "Notificaciones"
-              AppPermissions.requestNotification();
-              final newValue = await showDialog<bool>(
-                context: context,
-                builder: (context) => ToggleNotifications(),
-              );
-              if (newValue != null) {
-                setState(() {
-                  notificationsEnable = newValue;
-                });
-              }
-            },
+            trailing: Switch(
+              value: notificationsEnable,
+              activeThumbColor: Colors.blueAccent,
+              activeTrackColor: Colors.blueAccent.withValues(alpha: 0.25),
+              inactiveThumbColor: Colors.white70,
+              inactiveTrackColor: Colors.white24,
+              onChanged: (v) async {
+                // Acción al tocar "Notificaciones"
+                notificationsEnable = v;
+                await NotificationSettings.setEnabled(v);
+                setState(() {});
+              },
+            ),
           ),
           ListTile(
             leading: Icon(Icons.sd_card, color: Colors.white),
@@ -123,11 +121,14 @@ class _MoreScreenState extends State<MoreScreen> {
               watcherEnabled ? Icons.sync : Icons.sync_disabled,
               color: Colors.white,
             ),
-            title: Text('Escaneo en segundo plano', style: TextStyle(color: Colors.white)),
+            title: Text(
+              'Escaneo en segundo plano',
+              style: TextStyle(color: Colors.white),
+            ),
             trailing: Switch(
               value: watcherEnabled,
-              activeColor: Colors.blueAccent,
-              activeTrackColor: Colors.blueAccent.withOpacity(0.25),
+              activeThumbColor: Colors.blueAccent,
+              activeTrackColor: Colors.blueAccent.withValues(alpha: 0.25),
               inactiveThumbColor: Colors.white70,
               inactiveTrackColor: Colors.white24,
               onChanged: (v) async {
@@ -136,8 +137,8 @@ class _MoreScreenState extends State<MoreScreen> {
 
                 if (v) {
                   String? folder = await AppStorage.loadFolder();
-                  if (folder == null) folder = DefaultMusicPath.defaultPath;
-                  FileService.startBackgroundWatcher(folder);
+                  folder ??= DefaultMusicPath.defaultPath;
+                  await FileService.startBackgroundWatcher(folder);
                 } else {
                   FileService.stopBackgroundWatcher();
                 }

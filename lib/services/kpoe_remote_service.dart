@@ -7,6 +7,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:timelyr/models/lyric_result.dart';
 
 class KpoeRemoteService {
+  static final Set<String> _temporarilyDisabledBases = <String>{};
+
   /// Devuelve true si algún <p ...>...</p> no contiene <span> ni </span>.
   static bool hasParagraphWithoutAnySpan(String s) {
     try {
@@ -28,10 +30,41 @@ class KpoeRemoteService {
   }
 
   static const List<String> _kpoeServers = [
-    "https://lyricsplus-seven.vercel.app",
-    "https://lyricsplus.prjktla.workers.dev",
-    "https://lyrics-plus-backend.vercel.app",
+    "https://lyricsplus.prjktla.my.id", //youly's server
+    "https://lyricsplus.atomix.one/", //meow's mirror
+    "https://lyricsplus.binimum.org", //binimum's server
+    "https://lyricsplus.prjktla.workers.dev", //ibra's cf worker
+    "https://lyricsplus-seven.vercel.app", //jigen's mirror
+    "https://lyrics-plus-backend.vercel.app", //ibra's vercel
   ];
+
+  static String _normalizeBaseUrl(String baseUrl) {
+    return baseUrl.replaceAll(RegExp(r'/+$'), '');
+  }
+
+  static Uri _buildGetUri(
+    String baseUrl, {
+    required String title,
+    required String artist,
+    required String album,
+    required String duration,
+    bool useLegacyParamNames = false,
+  }) {
+    final normalizedBase = _normalizeBaseUrl(baseUrl);
+    final qs = useLegacyParamNames
+        ? 'artist_name=${Uri.encodeComponent(artist)}'
+              '&track_name=${Uri.encodeComponent(title)}'
+              '&album_name=${Uri.encodeComponent(album)}'
+              '&duration=${Uri.encodeComponent(duration)}'
+        : 'title=${Uri.encodeComponent(title)}'
+              '&artist=${Uri.encodeComponent(artist)}'
+              '&album=${Uri.encodeComponent(album)}'
+              '&duration=${Uri.encodeComponent(duration)}';
+
+    return Uri.parse(
+      '$normalizedBase/v1/ttml/get?${qs.replaceAll('%20', '+')}',
+    );
+  }
 
   static Future<LyricResult?> getKpoeLyrics({
     required String artist,
@@ -47,18 +80,20 @@ class KpoeRemoteService {
         ? ""
         : durationSeconds.toString();
 
-    final uri = Uri.parse(
-      "https://lyricsplus-seven.vercel.app/v1/ttml/get"
-      "?title=${Uri.encodeComponent(safeTitle)}"
-      "&artist=${Uri.encodeComponent(safeArtist)}"
-      "&album=${Uri.encodeComponent(safeAlbum)}"
-      "&duration=$safeDuration",
+    final body = await fetchFromKpoe(
+      safeTitle,
+      safeArtist,
+      album: safeAlbum,
+      duration: safeDuration,
+      format: 'json',
     );
 
-    final r = await http.get(uri);
-
-    if (r.statusCode == 200 && r.body.isNotEmpty && r.body != "{}") {
-      return LyricResult.fromJson(json.decode(r.body));
+    if (body != null && body.isNotEmpty && body != "{}") {
+      try {
+        return LyricResult.fromJson(json.decode(body));
+      } catch (_) {
+        return null;
+      }
     }
     return null;
   }
@@ -240,16 +275,9 @@ class KpoeRemoteService {
 
     final safeDuration = (duration == null || duration.isEmpty) ? '' : duration;
 
-    final base = customBaseUrl ?? _kpoeServers.first;
-
-    var qs =
-        'artist_name=${Uri.encodeComponent(safeArtist)}'
-        '&track_name=${Uri.encodeComponent(safeTitle)}'
-        '&album_name=${Uri.encodeComponent(safeAlbum)}'
-        '&duration=${Uri.encodeComponent(safeDuration)}';
-    qs = qs.replaceAll('%20', '+');
-
-    final url = '${base.replaceAll(RegExp(r'\/\$'), '')}/v1/ttml/get?$qs';
+    final candidateBases = customBaseUrl == null
+        ? _kpoeServers
+        : [customBaseUrl];
 
     final headers = {
       'User-Agent':
@@ -257,17 +285,55 @@ class KpoeRemoteService {
       'Accept': 'application/ttml+xml, application/xml, text/xml, */*',
     };
 
-    try {
-      final r = await http.get(Uri.parse(url), headers: headers);
-      print('Kpoe GET $url -> ${r.statusCode} (len=${r.body.length})');
-      if (r.statusCode == 200 && r.body.isNotEmpty && r.body != '{}') {
-        return r.body;
+    for (final base in candidateBases) {
+      final normalizedBase = _normalizeBaseUrl(base);
+      if (_temporarilyDisabledBases.contains(normalizedBase)) {
+        continue;
       }
-      return null;
-    } catch (e) {
-      print('Kpoe fetch error: $e');
-      return null;
+
+      final urls = [
+        _buildGetUri(
+          base,
+          title: safeTitle,
+          artist: safeArtist,
+          album: safeAlbum,
+          duration: safeDuration,
+        ),
+        _buildGetUri(
+          base,
+          title: safeTitle,
+          artist: safeArtist,
+          album: safeAlbum,
+          duration: safeDuration,
+          useLegacyParamNames: true,
+        ),
+      ];
+
+      for (final url in urls) {
+        try {
+          final r = await http.get(url, headers: headers);
+          print('Kpoe GET $url -> ${r.statusCode} (len=${r.body.length})');
+          if (r.statusCode == 200 && r.body.isNotEmpty && r.body != '{}') {
+            return r.body;
+          }
+        } catch (e) {
+          if (e is HandshakeException) {
+            _temporarilyDisabledBases.add(normalizedBase);
+            print(
+              'Kpoe mirror disabled for this session due to TLS error: $normalizedBase',
+            );
+            break;
+          }
+          print('Kpoe fetch error at $url: $e');
+        }
+      }
+
+      if (_temporarilyDisabledBases.contains(normalizedBase)) {
+        continue;
+      }
     }
+
+    return null;
   }
 
   static bool _looksLikeLrc(String s) {

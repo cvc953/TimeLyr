@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:metadata_god/metadata_god.dart';
 import 'package:timelyr/screens/home_screen.dart';
 import 'package:timelyr/screens/main_screen.dart';
 import 'utils/app_storage.dart';
@@ -8,7 +7,6 @@ import 'utils/artwork_cache.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await MetadataGod.initialize();
   await ArtworkCache.init();
   final bool firstRun = await AppStorage.isFirstRun();
 

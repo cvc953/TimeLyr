@@ -33,7 +33,7 @@ class _MainScreenState extends State<MainScreen> {
 
   Future<void> loadCachedSongs() async {
     final cached = await SongDatabase.load();
-    FileService.librarySongs = cached;
+    FileService.setLibrarySongs(cached);
 
     String? folder = await AppStorage.loadFolder();
 
@@ -44,7 +44,7 @@ class _MainScreenState extends State<MainScreen> {
     // Iniciar watcher en segundo plano si el usuario lo tiene activado
     final watcherEnabled = await AppStorage.loadWatcherEnabled();
     if (watcherEnabled) {
-      FileService.startBackgroundWatcher(folder);
+      await FileService.startBackgroundWatcher(folder);
     }
     setState(() {
       _loading = false;
