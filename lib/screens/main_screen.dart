@@ -43,10 +43,7 @@ class _MainScreenState extends State<MainScreen> {
     }
     final scanOnOpen = await AppStorage.loadWatcherEnabled();
     if (scanOnOpen) {
-      await FileService.scanMusicWithCallback(
-        folder,
-        onScan: (_, __, ___) {},
-      );
+      await FileService.scanMusicWithCallback(folder, onScan: (_, __, ___) {});
     }
     setState(() {
       _loading = false;
