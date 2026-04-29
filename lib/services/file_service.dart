@@ -1,6 +1,4 @@
 import 'dart:io';
-import 'dart:isolate';
-import 'package:timelyr/utils/artwork_cache.dart';
 import 'package:timelyr/utils/song_database.dart';
 import 'package:timelyr/services/metadata_reader.dart';
 import '../models/song.dart';
@@ -12,25 +10,15 @@ import 'package:timelyr/services/kpoe_remote_service.dart';
 class FileService {
   static List<Song> librarySongs = [];
   static Set<String> indexedPaths = {}; // For O(1) lookups
-  static Future<void> _processingLock =
-      Future.value(); // For sequential processing
 
   static void setLibrarySongs(List<Song> songs) {
     librarySongs = songs;
     indexedPaths = songs.map((s) => s.path).toSet();
   }
 
-  // Ajustable para controlar paralelismo durante el escaneo
-  static int scanConcurrency = 6;
   // Stream para notificar cambios en la librería (añadidos/actualizaciones)
   static final StreamController<void> libraryUpdateController =
       StreamController<void>.broadcast();
-
-  // Background scan isolate
-  static Isolate? _scanIsolate;
-  static ReceivePort? _receivePort;
-  static StreamSubscription? _receivePortSubscription;
-  static SendPort? _scanSendPort;
 
   static Future<void> scanMusicWithCallback(
     String rootPath, {
@@ -73,135 +61,6 @@ class FileService {
     setLibrarySongs(songs);
     await SongDatabase.save(songs);
     libraryUpdateController.add(null);
-  }
-
-  /// Procesa un único archivo de audio e intenta añadirlo a la librería.
-  static Future<Song?> processSingleFile(String path) async {
-    try {
-      // Si ya está indexado, no hacer nada (O(1) lookup)
-      if (indexedPaths.contains(path)) return null;
-
-      final metadata = await MetadataReader.getMetadata(path);
-
-      if (metadata == null) return null;
-
-      final artwork = metadata['artwork'];
-      if (artwork != null && artwork is Uint8List) {
-        ArtworkCache.save(path, artwork);
-      }
-
-      final song = Song(
-        path: path,
-        title: metadata['title'] as String? ?? path.split('/').last,
-        artist: metadata['artist'] as String? ?? '',
-        album: metadata['album'] as String? ?? '',
-        durationSeconds:
-            ((metadata['durationMs'] as num?)?.toInt() ?? 0) ~/ 1000,
-        modifiedMs: DateTime.now().millisecondsSinceEpoch,
-        size: 0,
-      );
-
-      // Ensure sequential processing (already handled by listener)
-      librarySongs.add(song);
-      indexedPaths.add(path);
-
-      // Guardar inmediatamente la base actualizada
-      await SongDatabase.save(librarySongs);
-
-      // Notificar a la UI que la librería cambió
-      libraryUpdateController.add(null);
-
-      return song;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Inicia un watcher en segundo plano que detecta archivos nuevos/modificados.
-  static Future<void> startBackgroundWatcher(String rootPath) async {
-    try {
-      stopBackgroundWatcher();
-
-      _receivePort = ReceivePort();
-      _receivePortSubscription = _receivePort?.listen((message) {
-        if (message is SendPort) {
-          _scanSendPort = message;
-          // Send the root path to the isolate
-          _scanSendPort?.send(rootPath);
-        } else if (message is String) {
-          // Process new/modified file sequentially
-          _processingLock = _processingLock.then((_) async {
-            await processSingleFile(message);
-          });
-        }
-      });
-
-      _scanIsolate = await Isolate.spawn(
-        _backgroundScanIsolate,
-        _receivePort!.sendPort,
-      );
-    } catch (_) {}
-  }
-
-  static void _backgroundScanIsolate(SendPort sendPort) {
-    final receivePort = ReceivePort();
-    sendPort.send(receivePort.sendPort);
-
-    String? rootPath;
-    final completer = Completer<void>();
-
-    receivePort.listen((message) {
-      if (message is String) {
-        rootPath = message;
-        if (!completer.isCompleted) {
-          completer.complete();
-        }
-      }
-    });
-
-    final sentFiles = <String>[];
-
-    void performScan() {
-      if (rootPath == null) return;
-
-      try {
-        final dir = Directory(rootPath!);
-        final files = dir.listSync(recursive: true);
-
-        for (var entity in files) {
-          if (entity is File &&
-              (entity.path.endsWith('.mp3') ||
-                  entity.path.endsWith('.flac') ||
-                  entity.path.endsWith('.m4a') ||
-                  entity.path.endsWith('.wav'))) {
-            if (!sentFiles.contains(entity.path)) {
-              sentFiles.add(entity.path);
-              sendPort.send(entity.path);
-            }
-          }
-        }
-      } catch (_) {}
-    }
-
-    completer.future.then((_) {
-      performScan();
-
-      Timer.periodic(const Duration(seconds: 30), (timer) {
-        performScan();
-      });
-    });
-  }
-
-  static void stopBackgroundWatcher() {
-    try {
-      _scanIsolate?.kill(priority: Isolate.immediate);
-      _scanIsolate = null;
-      _receivePortSubscription?.cancel();
-      _receivePortSubscription = null;
-      _receivePort?.close();
-      _receivePort = null;
-      _scanSendPort = null;
-    } catch (_) {}
   }
 
   static Future<void> saveLRC(String songPath, String lyrics, Song song) async {

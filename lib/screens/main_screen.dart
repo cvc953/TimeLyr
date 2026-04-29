@@ -41,10 +41,12 @@ class _MainScreenState extends State<MainScreen> {
       folder = DefaultMusicPath.defaultPath;
       await AppStorage.saveFolder(folder);
     }
-    // Iniciar watcher en segundo plano si el usuario lo tiene activado
-    final watcherEnabled = await AppStorage.loadWatcherEnabled();
-    if (watcherEnabled) {
-      await FileService.startBackgroundWatcher(folder);
+    final scanOnOpen = await AppStorage.loadWatcherEnabled();
+    if (scanOnOpen) {
+      await FileService.scanMusicWithCallback(
+        folder,
+        onScan: (_, __, ___) {},
+      );
     }
     setState(() {
       _loading = false;

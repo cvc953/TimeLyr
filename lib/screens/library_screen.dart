@@ -6,14 +6,12 @@ import 'package:timelyr/utils/artwork_cache.dart';
 import '../widgets/gradient_background.dart';
 import '../services/file_service.dart';
 import '../services/metadata_reader.dart';
-import '../utils/app_storage.dart';
 import '../services/lyrics_service.dart';
 import '../utils/lyrics_utils.dart';
 import '../models/song.dart';
 import 'lyrics_viewer.dart';
 import 'dart:typed_data';
 import '../services/download_manager.dart';
-import '../widgets/select_directory.dart';
 import 'package:path/path.dart' as p;
 
 enum LyricFilter { all, withLyrics, withoutLyrics }
@@ -48,8 +46,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
     filteredSongs = List.from(allSongs);
     filteredSongs.sort((a, b) => a.title.compareTo(b.title));
     loadArtworkCache();
-    // Iniciar escaneo en segundo plano basado en preferencias guardadas
-    _initializeBackgroundWatcher();
     // Escuchar cambios en la librería (p. ej. watcher en background)
     _librarySub = FileService.libraryUpdateController.stream.listen((_) async {
       allSongs = FileService.librarySongs;
@@ -58,36 +54,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       await loadArtworkCache();
       setState(() {});
     });
-  }
-
-  Future<void> _initializeBackgroundWatcher() async {
-    // Cargar preferencias guardadas
-    final watcherEnabled = await AppStorage.loadWatcherEnabled();
-    final selectedFolder = await AppStorage.loadFolder();
-
-    // Si el watcher está habilitado y hay una carpeta seleccionada, iniciar escaneo
-    if (watcherEnabled && selectedFolder != null && selectedFolder.isNotEmpty) {
-      await FileService.startBackgroundWatcher(selectedFolder);
-    }
-    // Si el watcher está habilitado pero no hay carpeta seleccionada, mostrar selector
-    else if (watcherEnabled) {
-      // Esperar a que el UI esté listo antes de mostrar el diálogo
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        final selectedDir = await showDialog<String>(
-          context: context,
-          builder: (BuildContext context) {
-            return SelectDirectory();
-          },
-        );
-
-        if (selectedDir != null && selectedDir.isNotEmpty) {
-          // Guardar la carpeta seleccionada
-          await AppStorage.saveFolder(selectedDir);
-          // Iniciar el escaneo en segundo plano
-          await FileService.startBackgroundWatcher(selectedDir);
-        }
-      });
-    }
   }
 
   StreamSubscription<void>? _librarySub;

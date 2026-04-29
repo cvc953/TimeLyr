@@ -4,8 +4,6 @@ import 'package:timelyr/widgets/scan_music.dart';
 import 'package:timelyr/widgets/select_directory.dart';
 import '../services/notifications_settings.dart';
 import '../utils/app_storage.dart';
-import '../services/file_service.dart';
-import '../utils/default_music_path.dart';
 
 class MoreScreen extends StatefulWidget {
   const MoreScreen({super.key});
@@ -122,7 +120,7 @@ class _MoreScreenState extends State<MoreScreen> {
               color: Colors.white,
             ),
             title: Text(
-              'Escaneo en segundo plano',
+              'Escaneo al abrir la app',
               style: TextStyle(color: Colors.white),
             ),
             trailing: Switch(
@@ -134,14 +132,6 @@ class _MoreScreenState extends State<MoreScreen> {
               onChanged: (v) async {
                 watcherEnabled = v;
                 await AppStorage.saveWatcherEnabled(v);
-
-                if (v) {
-                  String? folder = await AppStorage.loadFolder();
-                  folder ??= DefaultMusicPath.defaultPath;
-                  await FileService.startBackgroundWatcher(folder);
-                } else {
-                  FileService.stopBackgroundWatcher();
-                }
 
                 setState(() {});
               },

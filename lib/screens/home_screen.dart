@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:timelyr/utils/app_storage.dart';
 import 'package:timelyr/utils/permissions.dart';
 import '../widgets/gradient_background.dart';
-import 'scan_screen.dart';
-import '../utils/default_music_path.dart';
+import 'main_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -64,8 +63,7 @@ class HomeScreen extends StatelessWidget {
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          ScanScreen(rootPath: DefaultMusicPath.defaultPath),
+                      builder: (_) => const MainScreen(),
                     ),
                   );
                 },

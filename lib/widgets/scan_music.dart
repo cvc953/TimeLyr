@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:timelyr/screens/scan_screen.dart';
+import 'package:timelyr/services/file_service.dart';
+import 'package:timelyr/utils/app_storage.dart';
 import '../utils/default_music_path.dart';
 import 'select_directory.dart';
 
@@ -34,12 +35,16 @@ class ScanMusic extends StatelessWidget {
             backgroundColor: Colors.blueAccent,
             foregroundColor: Colors.black87,
           ),
-          onPressed: () {
+          onPressed: () async {
             final path = rootPath;
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => ScanScreen(rootPath: path)),
+            await AppStorage.saveFolder(path);
+            await FileService.scanMusicWithCallback(
+              path,
+              onScan: (_, __, ___) {},
             );
+            if (context.mounted) {
+              Navigator.of(context).pop(true);
+            }
           },
           child: const Text(
             'Escanear Música',
