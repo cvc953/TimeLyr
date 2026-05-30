@@ -24,6 +24,54 @@ class _MainScreenState extends State<MainScreen> {
   ];
 
   bool _loading = true;
+  bool _isBackgroundScanning = false;
+  int _scanScanned = 0;
+  int _scanFound = 0;
+
+  Future<void> _startBackgroundScan(String folder) async {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isBackgroundScanning = true;
+      _scanScanned = 0;
+      _scanFound = 0;
+    });
+
+    try {
+      await FileService.scanMusicWithCallback(
+        folder,
+        onScan: (_, scanned, found) {
+          if (!mounted) {
+            return;
+          }
+
+          // Reducir rebuilds: solo actualizar cada 25 archivos o cuando aumenta found
+          final shouldRebuild =
+              scanned == 1 ||
+              scanned % 25 == 0 ||
+              found != _scanFound ||
+              !_isBackgroundScanning;
+
+          if (!shouldRebuild) {
+            return;
+          }
+
+          setState(() {
+            _scanScanned = scanned;
+            _scanFound = found;
+          });
+        },
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBackgroundScanning = false;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -42,12 +90,14 @@ class _MainScreenState extends State<MainScreen> {
       await AppStorage.saveFolder(folder);
     }
     final scanOnOpen = await AppStorage.loadWatcherEnabled();
-    if (scanOnOpen) {
-      await FileService.scanMusicWithCallback(folder, onScan: (_, __, ___) {});
-    }
+
     setState(() {
       _loading = false;
     });
+
+    if (scanOnOpen) {
+      _startBackgroundScan(folder);
+    }
   }
 
   @override
@@ -63,7 +113,7 @@ class _MainScreenState extends State<MainScreen> {
                 CircularProgressIndicator(color: Colors.white),
                 SizedBox(height: 20),
                 Text(
-                  "Escaneando tu música...",
+                  "Cargando tu biblioteca...",
                   style: TextStyle(fontSize: 18, color: Colors.white70),
                 ),
               ],
@@ -76,11 +126,49 @@ class _MainScreenState extends State<MainScreen> {
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Color(0xFF0D1B2A),
-        body: _pages[_currentIndex],
+        body: Column(
+          children: [
+            if (_isBackgroundScanning)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                color: Colors.white.withValues(alpha: 0.06),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Escaneando tu biblioteca...",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "$_scanScanned archivos revisados • $_scanFound canciones encontradas",
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const LinearProgressIndicator(
+                      color: Colors.blueAccent,
+                      backgroundColor: Colors.white24,
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(child: _pages[_currentIndex]),
+          ],
+        ),
         bottomNavigationBar: NavigationBarTheme(
           data: NavigationBarThemeData(
             backgroundColor: const Color(0xFF0D1B2A),
-            indicatorColor: Colors.blueAccent.withOpacity(0.25),
+            indicatorColor: Colors.blueAccent.withValues(alpha: 0.25),
 
             labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((
               states,
@@ -93,7 +181,7 @@ class _MainScreenState extends State<MainScreen> {
           ),
           child: NavigationBar(
             backgroundColor: const Color(0xFF0D1B2A),
-            indicatorColor: Colors.blueAccent.withOpacity(0.25),
+            indicatorColor: Colors.blueAccent.withValues(alpha: 0.25),
             selectedIndex: _currentIndex,
             onDestinationSelected: (i) {
               setState(() => _currentIndex = i);

@@ -11,20 +11,22 @@ class MetadataReader {
         return Map<String, dynamic>.from(result);
       }
       return null;
-    } on PlatformException catch (e) {
+    } on PlatformException {
       //print('Failed to get metadata: ${e.message}');
       return null;
     }
   }
 
-  static Future<List<dynamic>> scanMusic() async {
+  static Future<List<dynamic>> scanMusic({String? rootPath}) async {
     try {
-      final result = await _channel.invokeMethod('scanMusic');
+      final result = await _channel.invokeMethod('scanMusic', {
+        'rootPath': rootPath,
+      });
       if (result is List) {
         return result;
       }
       return [];
-    } on PlatformException catch (e) {
+    } on PlatformException {
       //print('Failed to scan music: ${e.message}');
       return [];
     }

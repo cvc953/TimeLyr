@@ -10,6 +10,7 @@ import 'package:timelyr/services/kpoe_remote_service.dart';
 class FileService {
   static List<Song> librarySongs = [];
   static Set<String> indexedPaths = {}; // For O(1) lookups
+  static int _activeScanId = 0;
 
   static void setLibrarySongs(List<Song> songs) {
     librarySongs = songs;
@@ -24,12 +25,23 @@ class FileService {
     String rootPath, {
     required Function(String path, int scanned, int found) onScan,
   }) async {
+    final int scanId = ++_activeScanId;
+    final normalizedRoot = p.normalize(rootPath);
+
     // Usar MediaStore para escanear música rápidamente
-    final List<dynamic> musicList = await MetadataReader.scanMusic();
+    final List<dynamic> musicList = await MetadataReader.scanMusic(
+      rootPath: normalizedRoot,
+    );
+
+    if (scanId != _activeScanId) {
+      return;
+    }
 
     List<Song> songs = [];
     final cached = await SongDatabase.load();
-    final Map<String, Song> cachedByPath = {for (var s in cached) s.path: s};
+    final Map<String, Song> cachedByPath = {
+      for (var s in cached) p.normalize(s.path): s,
+    };
 
     for (int i = 0; i < musicList.length; i++) {
       final item = musicList[i] as Map<dynamic, dynamic>;
@@ -37,17 +49,22 @@ class FileService {
 
       if (path == null) continue;
 
-      onScan(path, i + 1, songs.length);
+      final normalizedPath = p.normalize(path);
+      if (!p.isWithin(normalizedRoot, normalizedPath) &&
+          normalizedPath != normalizedRoot) {
+        continue;
+      }
 
       // Si ya existe en caché, reutilizar la entrada
-      if (cachedByPath.containsKey(path)) {
-        songs.add(cachedByPath[path]!);
+      if (cachedByPath.containsKey(normalizedPath)) {
+        songs.add(cachedByPath[normalizedPath]!);
+        onScan(path, i + 1, songs.length);
         continue;
       }
 
       final song = Song(
-        path: path,
-        title: item['title'] as String? ?? path.split('/').last,
+        path: normalizedPath,
+        title: item['title'] as String? ?? normalizedPath.split('/').last,
         artist: item['artist'] as String? ?? '',
         album: item['album'] as String? ?? '',
         durationSeconds: ((item['durationMs'] as num?)?.toInt() ?? 0) ~/ 1000,
@@ -56,6 +73,11 @@ class FileService {
       );
 
       songs.add(song);
+      onScan(path, i + 1, songs.length);
+    }
+
+    if (scanId != _activeScanId) {
+      return;
     }
 
     setLibrarySongs(songs);

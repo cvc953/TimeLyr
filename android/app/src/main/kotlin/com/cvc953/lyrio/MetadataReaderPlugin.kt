@@ -53,7 +53,8 @@ class MetadataReaderPlugin :
 
             "scanMusic" -> {
                 try {
-                    val musicList = scanMusic()
+                    val rootPath = call.argument<String>("rootPath")
+                    val musicList = scanMusic(rootPath)
                     result.success(musicList)
                 } catch (e: Exception) {
                     result.error("EXCEPTION", e.message, null)
@@ -109,7 +110,7 @@ class MetadataReaderPlugin :
         }
     }
 
-    private fun scanMusic(): List<Map<String, Any>> {
+    private fun scanMusic(rootPath: String?): List<Map<String, Any>> {
         val musicList = mutableListOf<Map<String, Any>>()
         val projection =
             arrayOf(
@@ -121,15 +122,26 @@ class MetadataReaderPlugin :
                 MediaStore.Audio.Media.DATA,
             )
 
-        // Filtrar por archivos de audio conocidos
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+        val hasRootFilter = !rootPath.isNullOrBlank()
+        val selection =
+            if (hasRootFilter) {
+                "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DATA} LIKE ?"
+            } else {
+                "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+            }
+        val selectionArgs =
+            if (hasRootFilter) {
+                arrayOf("${rootPath}%")
+            } else {
+                null
+            }
 
         context.contentResolver
             .query(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                 projection,
                 selection,
-                null,
+                selectionArgs,
                 "${MediaStore.Audio.Media.TITLE} ASC",
             )?.use { cursor ->
                 val idIndex = cursor.getColumnIndex(MediaStore.Audio.Media._ID)

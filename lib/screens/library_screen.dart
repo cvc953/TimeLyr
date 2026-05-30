@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:timelyr/utils/artwork_cache.dart';
 import '../widgets/gradient_background.dart';
@@ -16,6 +15,13 @@ import 'package:path/path.dart' as p;
 
 enum LyricFilter { all, withLyrics, withoutLyrics }
 
+class _LyricStatus {
+  final bool hasLrc;
+  final bool hasTtml;
+
+  const _LyricStatus({required this.hasLrc, required this.hasTtml});
+}
+
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
 
@@ -29,13 +35,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool downloadingAll = false;
   Set<String> downloadingSongs = {};
   final Map<String, Uint8List?> artworkCache = {};
+  final Set<String> _artworkLoading = {};
+  final Map<String, _LyricStatus> _lyricStatusByPath = {};
+  final Map<String, String> _searchBlobByPath = {};
   final dm = DownloadManager.instance;
   double ttmlProgress = 0.0;
   LyricFilter _lyricFilter = LyricFilter.all;
+  String _searchQuery = '';
+  Timer? _searchDebounce;
+  int _lyricStatusRefreshRequestId = 0;
 
   @override
   void dispose() {
     _librarySub?.cancel();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
@@ -45,45 +58,73 @@ class _LibraryScreenState extends State<LibraryScreen> {
     allSongs = FileService.librarySongs;
     filteredSongs = List.from(allSongs);
     filteredSongs.sort((a, b) => a.title.compareTo(b.title));
-    loadArtworkCache();
+    _refreshSearchCache(allSongs);
+    unawaited(_refreshLyricStatusCache(allSongs, reapplyFilters: true));
     // Escuchar cambios en la librería (p. ej. watcher en background)
-    _librarySub = FileService.libraryUpdateController.stream.listen((_) async {
+    _librarySub = FileService.libraryUpdateController.stream.listen((_) {
       allSongs = FileService.librarySongs;
-      filteredSongs = List.from(allSongs);
-      filteredSongs.sort((a, b) => a.title.compareTo(b.title));
-      await loadArtworkCache();
-      setState(() {});
+      _refreshSearchCache(allSongs);
+      _applyFilters();
+      unawaited(_refreshLyricStatusCache(allSongs, reapplyFilters: true));
     });
   }
 
   StreamSubscription<void>? _librarySub;
 
-  Future<void> loadArtworkCache() async {
-    // Cargar artwork en paralelo con un límite de concurrencia
-    const int concurrencyLimit = 4;
-    final List<Future<void>> tasks = [];
+  Future<_LyricStatus> _buildLyricStatus(Song song) async {
+    final file = File(song.path);
+    final filename = p.basenameWithoutExtension(file.path);
+    final lrcFile = File("${file.parent.path}/$filename.lrc");
+    final ttmlFile = File("${file.parent.path}/$filename.ttml");
 
-    for (var song in allSongs) {
-      tasks.add(_loadSingleArtwork(song));
-
-      // Procesar en lotes para no sobrecargar
-      if (tasks.length >= concurrencyLimit) {
-        await Future.wait(tasks);
-        tasks.clear();
-        // Actualizar UI periódicamente durante la carga
-        if (mounted) setState(() {});
-      }
-    }
-
-    // Procesar las tareas restantes
-    if (tasks.isNotEmpty) {
-      await Future.wait(tasks);
-    }
-
-    if (mounted) setState(() {});
+    return _LyricStatus(
+      hasLrc: await lrcFile.exists(),
+      hasTtml: await ttmlFile.exists(),
+    );
   }
 
-  Future<void> _loadSingleArtwork(Song song) async {
+  void _refreshSearchCache(List<Song> songs) {
+    _searchBlobByPath.clear();
+    for (final song in songs) {
+      _searchBlobByPath[song.path] =
+          "${song.title} ${getPrimaryArtist(song.artist)} ${song.album}"
+              .toLowerCase();
+    }
+  }
+
+  Future<void> _refreshLyricStatusCache(
+    List<Song> songs, {
+    bool reapplyFilters = false,
+  }) async {
+    final requestId = ++_lyricStatusRefreshRequestId;
+    final statusEntries = await Future.wait(
+      songs.map((song) async {
+        final status = await _buildLyricStatus(song);
+        return MapEntry(song.path, status);
+      }),
+    );
+
+    if (!mounted || requestId != _lyricStatusRefreshRequestId) {
+      return;
+    }
+
+    _lyricStatusByPath
+      ..clear()
+      ..addEntries(statusEntries);
+
+    if (reapplyFilters) {
+      _applyFilters();
+    }
+  }
+
+  Future<void> _queueArtworkLoad(Song song) async {
+    if (artworkCache.containsKey(song.path) ||
+        _artworkLoading.contains(song.path)) {
+      return;
+    }
+
+    _artworkLoading.add(song.path);
+
     try {
       // Primero intentar desde el caché de disco
       Uint8List? artwork = await ArtworkCache.load(song.path);
@@ -98,30 +139,58 @@ class _LibraryScreenState extends State<LibraryScreen> {
         }
       }
 
-      artworkCache[song.path] = artwork;
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        artworkCache[song.path] = artwork;
+      });
     } catch (e) {
       // Silenciar errores individuales para no bloquear la carga
-      artworkCache[song.path] = null;
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        artworkCache[song.path] = null;
+      });
+    } finally {
+      _artworkLoading.remove(song.path);
     }
   }
 
   void filterSongs(String query) {
-    query = query.toLowerCase();
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 220), () {
+      if (!mounted || _searchQuery == query) {
+        return;
+      }
 
+      _searchQuery = query;
+      _applyFilters();
+    });
+  }
+
+  void _applyFilters() {
+    final normalizedQuery = _searchQuery.toLowerCase();
     setState(() {
       filteredSongs = allSongs.where((song) {
-        bool matchesQuery =
-            song.title.toLowerCase().contains(query) ||
-            getPrimaryArtist(song.artist).toLowerCase().contains(query) ||
-            song.album.toLowerCase().contains(query);
+        final lyricStatus =
+            _lyricStatusByPath[song.path] ??
+            const _LyricStatus(hasLrc: false, hasTtml: false);
+
+        final searchBlob = _searchBlobByPath[song.path] ?? '';
+        final bool matchesQuery =
+            normalizedQuery.isEmpty || searchBlob.contains(normalizedQuery);
 
         bool matchesLyricFilter = true;
         switch (_lyricFilter) {
           case LyricFilter.withLyrics:
-            matchesLyricFilter = hasLrc(song) && hasTtml(song);
+            matchesLyricFilter = lyricStatus.hasLrc && lyricStatus.hasTtml;
             break;
           case LyricFilter.withoutLyrics:
-            matchesLyricFilter = !hasLrc(song) || !hasTtml(song);
+            matchesLyricFilter = !lyricStatus.hasLrc || !lyricStatus.hasTtml;
             break;
           case LyricFilter.all:
             matchesLyricFilter = true;
@@ -131,18 +200,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return matchesQuery && matchesLyricFilter;
       }).toList();
     });
-  }
-
-  bool hasLrc(Song song) {
-    final file = File(song.path);
-    final filename = p.basenameWithoutExtension(file.path);
-    return File("${file.parent.path}/$filename.lrc").existsSync();
-  }
-
-  bool hasTtml(Song song) {
-    final file = File(song.path);
-    final filename = p.basenameWithoutExtension(file.path);
-    return File("${file.parent.path}/$filename.ttml").existsSync();
   }
 
   Future<void> downloadOne(Song song) async {
@@ -157,13 +214,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
 
     if (!ok) {
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("No se encontró letra para ${song.title}")),
       );
       return;
     }
 
-    setState(() {}); // refrescar check verde
+    _lyricStatusByPath[song.path] = await _buildLyricStatus(song);
+    _applyFilters();
   }
 
   Future<void> downloadPool(List<Song> songs, int poolSize) async {
@@ -216,10 +277,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     // Separar canciones sin LRC (para descargar LRC + TTML) y canciones
     // que ya tienen LRC (para solo intentar descargar/guardar el TTML).
-    final listWithoutLrc = listToDownload
-        .where((song) => !hasLrc(song))
-        .toList();
-    final listWithLrc = listToDownload.where((song) => hasLrc(song)).toList();
+    final listWithoutLrc = listToDownload.where((song) {
+      final status =
+          _lyricStatusByPath[song.path] ??
+          const _LyricStatus(hasLrc: false, hasTtml: false);
+      return !status.hasLrc;
+    }).toList();
+    final listWithLrc = listToDownload.where((song) {
+      final status =
+          _lyricStatusByPath[song.path] ??
+          const _LyricStatus(hasLrc: false, hasTtml: false);
+      return status.hasLrc;
+    }).toList();
     // Escuchar progreso
     DownloadManager().progressStream.listen((p) {
       setState(() => dm.progress = p);
@@ -254,6 +323,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
       dm.progress = 0;
     });
 
+    final statusEntries = await Future.wait(
+      listToDownload.map((song) async {
+        final status = await _buildLyricStatus(song);
+        return MapEntry(song.path, status);
+      }),
+    );
+    for (final entry in statusEntries) {
+      _lyricStatusByPath[entry.key] = entry.value;
+    }
+    _applyFilters();
+
+    if (!mounted) {
+      return;
+    }
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text("Descarga completa.")));
@@ -396,11 +479,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ],
     ).then((LyricFilter? selectedFilter) {
       if (selectedFilter != null && selectedFilter != _lyricFilter) {
-        setState(() {
-          _lyricFilter = selectedFilter;
-        });
+        _lyricFilter = selectedFilter;
         // Refiltrar con el mismo query para aplicar el nuevo filtro
-        filterSongs('');
+        _applyFilters();
       }
     });
   }
@@ -490,7 +571,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Widget songitem(Song filteredSongs) {
     final song = filteredSongs;
-    final lrcExists = hasLrc(song);
+    final lyricStatus =
+        _lyricStatusByPath[song.path] ??
+        const _LyricStatus(hasLrc: false, hasTtml: false);
+    unawaited(_queueArtworkLoad(song));
 
     return Row(
       children: [
@@ -556,7 +640,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         const SizedBox(width: 12),
 
         // Descarga / loader / check
-        (lrcExists && hasTtml(song))
+        (lyricStatus.hasLrc && lyricStatus.hasTtml)
             ? const Icon(
                 Icons.check_circle,
                 color: Colors.greenAccent,
