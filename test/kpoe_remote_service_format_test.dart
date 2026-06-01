@@ -74,5 +74,27 @@ void main() {
       expect(lrc, contains('[00:01.67]Il chaos perfetto, perfetto'));
       expect(lrc, contains('[00:31.22]cuore nell\'arsenico'));
     });
+
+    test('convertTtmlToLrc maneja formato hh:mm:ss.xxx', () {
+      final ttml = '<tt xmlns="http://www.w3.org/ns/ttml"><body><div>'
+          '<p begin="00:00:01.250" end="00:00:02.000">Uno</p>'
+          '<p begin="00:01:30.500" end="00:01:32.000">Dos</p>'
+          '</div></body></tt>';
+
+      final lrc = KpoeRemoteService.convertTtmlToLrc(ttml);
+      expect(lrc, contains('[00:01.25]Uno'));
+      expect(lrc, contains('[01:30.50]Dos'));
+    });
+
+    test('convertTtmlToLrc maneja timestamps en segundos sin colon', () {
+      final ttml = '<tt xmlns="http://www.w3.org/ns/ttml"><body><div>'
+          '<p begin="1.5">Uno</p>'
+          '<p begin="90.0">Noventa</p>'
+          '</div></body></tt>';
+
+      final lrc = KpoeRemoteService.convertTtmlToLrc(ttml);
+      expect(lrc, contains('[00:01.50]Uno'));
+      expect(lrc, contains('[01:30.00]Noventa'));
+    });
   });
 }

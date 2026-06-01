@@ -102,14 +102,29 @@ class KpoeRemoteService {
   static String _toLrcTimestamp(String? raw) {
     if (raw == null || raw.trim().isEmpty) return '00:00.00';
 
-    final normalized = _normalizeTimestampsInString('begin="${raw.trim()}"');
-    final match = RegExp(r'begin="([0-9]{2}:[0-9]{2}\.[0-9]{2})"').firstMatch(
-      normalized,
-    );
-    if (match != null) {
-      return match.group(1)!;
+    final trimmed = raw.trim();
+    int totalMs = 0;
+
+    final parts = trimmed.split(':');
+    if (parts.length == 3) {
+      final h = int.tryParse(parts[0]) ?? 0;
+      final m = int.tryParse(parts[1]) ?? 0;
+      final secPart = double.tryParse(parts[2]) ?? 0.0;
+      totalMs = (h * 3600 * 1000) + (m * 60 * 1000) + (secPart * 1000).round();
+    } else if (parts.length == 2) {
+      final m = int.tryParse(parts[0]) ?? 0;
+      final secPart = double.tryParse(parts[1]) ?? 0.0;
+      totalMs = (m * 60 * 1000) + (secPart * 1000).round();
+    } else {
+      totalMs = ((double.tryParse(trimmed) ?? 0.0) * 1000).round();
     }
-    return '00:00.00';
+
+    final totalCentis = (totalMs + 5) ~/ 10;
+    final centis = totalCentis % 100;
+    final totalSeconds = totalCentis ~/ 100;
+    final sec = totalSeconds % 60;
+    final min = totalSeconds ~/ 60;
+    return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}.${centis.toString().padLeft(2, '0')}';
   }
 
   static const List<String> _kpoeServers = [
