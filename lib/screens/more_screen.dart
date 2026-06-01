@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:timelyr/screens/about_screen.dart';
+import 'package:timelyr/services/file_service.dart';
+import 'package:timelyr/services/lyrics_service.dart';
 import 'package:timelyr/widgets/scan_music.dart';
 import 'package:timelyr/widgets/select_directory.dart';
 import '../services/notifications_settings.dart';
@@ -31,6 +34,89 @@ class _MoreScreenState extends State<MoreScreen> {
   void loadWatcherPref() async {
     watcherEnabled = await AppStorage.loadWatcherEnabled();
     setState(() {});
+  }
+
+  void _fixBadLrcs(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        int fixed = 0;
+        int total = 0;
+        String currentSong = '';
+        bool started = false;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            if (!started) {
+              started = true;
+              Future.microtask(() async {
+                final result = await LyricsService.fixBadLrcFiles(
+                  FileService.librarySongs,
+                  onProgress: (i, totalSongs, title) {
+                    setDialogState(() {
+                      currentSong = title;
+                    });
+                  },
+                );
+                setDialogState(() {
+                  fixed = result.fixed;
+                  total = result.total;
+                });
+              });
+            }
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF0D1B2A),
+              title: Text(
+                total == 0 && fixed == 0 && currentSong.isEmpty
+                    ? 'Buscando LRC dañados...'
+                    : total == 0 && fixed == 0
+                    ? 'Reparando...'
+                    : 'Reparación completa',
+                style: const TextStyle(color: Colors.white),
+              ),
+              content: total == 0 && fixed == 0
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const LinearProgressIndicator(
+                          color: Colors.blueAccent,
+                          backgroundColor: Colors.white24,
+                        ),
+                        if (currentSong.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            currentSong,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ],
+                    )
+                  : Text(
+                      total > 0
+                          ? 'Se repararon $fixed de $total LRC dañados.'
+                          : 'No se encontraron LRC dañados.',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    'Cerrar',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -144,15 +230,25 @@ class _MoreScreenState extends State<MoreScreen> {
               style: TextStyle(color: Colors.white),
             ),
             onTap: () {
-              // Acción al tocar "Escanear música"
               showDialog(context: context, builder: (context) => ScanMusic());
             },
+          ),
+          ListTile(
+            leading: Icon(Icons.healing, color: Colors.orangeAccent),
+            title: Text(
+              'Reparar LRC dañados',
+              style: TextStyle(color: Colors.white),
+            ),
+            subtitle: const Text(
+              'Re-descarga LRC con timestamps incorrectos',
+              style: TextStyle(color: Colors.white60, fontSize: 11),
+            ),
+            onTap: () => _fixBadLrcs(context),
           ),
           ListTile(
             leading: Icon(Icons.info, color: Colors.white),
             title: Text('Acerca de', style: TextStyle(color: Colors.white)),
             onTap: () {
-              // Acción al tocar "Acerca de"
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const AboutScreen()),

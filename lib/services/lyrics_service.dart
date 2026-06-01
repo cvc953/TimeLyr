@@ -147,6 +147,49 @@ class LyricsService {
     return LyricsSaveResult.success();
   }
 
+  /// Revisa si un archivo .lrc tiene solo timestamps [00:00.00]
+  /// (indica que falló la conversión TTML->LRC y se guardó mal).
+  static Future<bool> isBadLrcFile(String lrcPath) async {
+    try {
+      final file = File(lrcPath);
+      if (!await file.exists()) return false;
+      final content = await file.readAsString();
+      final tsRe = RegExp(r'^\[(\d{2}:\d{2}\.\d{2})\]');
+      final tsLines =
+          content.split('\n').where((l) => tsRe.hasMatch(l)).toList();
+      if (tsLines.isEmpty) return false;
+      return tsLines.every((l) => l.startsWith('[00:00.00]'));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Escanea canciones de la biblioteca, detecta LRCs dañados y los
+  /// vuelve a descargar. Retorna cuántos se pudieron arreglar del total.
+  static Future<({int fixed, int total})> fixBadLrcFiles(
+    List<Song> songs, {
+    required void Function(int current, int total, String title) onProgress,
+  }) async {
+    int fixed = 0;
+    int total = 0;
+
+    for (int i = 0; i < songs.length; i++) {
+      final song = songs[i];
+      final file = File(song.path);
+      final lrcPath =
+          '${file.parent.path}/${p.basenameWithoutExtension(file.path)}.lrc';
+
+      if (await isBadLrcFile(lrcPath)) {
+        total++;
+        onProgress(i + 1, songs.length, song.title);
+        final result = await downloadAndSaveResult(song);
+        if (result.saved) fixed++;
+      }
+    }
+
+    return (fixed: fixed, total: total);
+  }
+
   static Future<bool> saveManualResult(Song song, LyricResult result) async {
     try {
       final file = File(song.path);
