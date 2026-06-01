@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:timelyr/models/lyric_result.dart';
 import 'package:timelyr/services/lrclib_service.dart';
 import 'package:timelyr/widgets/gradient_background.dart';
 import 'lyric_preview_screen.dart';
 import '../models/song.dart';
-import '../services/kpoe_remote_service.dart';
 
 class SearchScreen extends StatefulWidget {
   final String initialTitle;
@@ -25,30 +23,6 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  // Extrae la letra de un archivo TTML (solo texto plano)
-  Future<String> extractTtmlLyrics(String path) async {
-    final file = File(path);
-    if (!await file.exists()) return '';
-    final xml = await file.readAsString();
-    final pTag = RegExp(r'<p[^>]*>(.*?)<\/p>', dotAll: true);
-    final spanTag = RegExp(r'<span[^>]*>(.*?)<\/span>', dotAll: true);
-    final buffer = StringBuffer();
-    for (final p in pTag.allMatches(xml)) {
-      final pContent = p.group(1) ?? '';
-      final spans = spanTag.allMatches(pContent);
-      if (spans.isNotEmpty) {
-        for (final s in spans) {
-          buffer.write((s.group(1) ?? '').replaceAll(RegExp(r'<[^>]+>'), ''));
-          buffer.write(' ');
-        }
-      } else {
-        buffer.write(pContent.replaceAll(RegExp(r'<[^>]+>'), ''));
-      }
-      buffer.write('\n');
-    }
-    return buffer.toString().trim();
-  }
-
   final TextEditingController titleController = TextEditingController();
   final TextEditingController albumController = TextEditingController();
   final TextEditingController artistController = TextEditingController();
@@ -100,60 +74,15 @@ class _SearchScreenState extends State<SearchScreen> {
         album: album,
       );
 
-      // Buscar TTML en el servidor (KpoeRemoteService)
-      final ttmlServerResult = await KpoeRemoteService.getKpoeLyrics(
-        artist: artist,
-        title: title,
-        album: album,
-        durationSeconds: 0,
-      );
-
-      // Buscar archivos TTML locales que coincidan con el título o artista
-      final dir = Directory(".");
-      final ttmlFiles = await dir
-          .list()
-          .where(
-            (f) => f.path.endsWith('.ttml') || f.path.endsWith('.ttml.xml'),
-          )
-          .toList();
-
-      final ttmlLocalResults = <LyricResult>[];
-      for (final f in ttmlFiles) {
-        final name = f.uri.pathSegments.last.toLowerCase();
-        if ((title.isNotEmpty && name.contains(title.toLowerCase())) ||
-            (artist.isNotEmpty && name.contains(artist.toLowerCase()))) {
-          final lyrics = await extractTtmlLyrics(f.path);
-          if (lyrics.trim().isNotEmpty) {
-            ttmlLocalResults.add(
-              LyricResult(
-                id: 0,
-                plainLyrics: lyrics,
-                syncedLyrics: '',
-                title: title.isNotEmpty ? title : f.uri.pathSegments.last,
-                artist: artist,
-                album: '',
-                durationSeconds: 0,
-                isInstrumental: false,
-              ),
-            );
-          }
-        }
-      }
-
       if (!mounted) {
         return;
       }
 
       setState(() {
-        final ttmlServerList = ttmlServerResult != null
-            ? [ttmlServerResult]
-            : [];
-        if (lrcList.isEmpty &&
-            ttmlLocalResults.isEmpty &&
-            ttmlServerList.isEmpty) {
+        if (lrcList.isEmpty) {
           _error = "No se encontraron letras para los criterios dados.";
         } else {
-          results = [...ttmlServerList, ...ttmlLocalResults, ...lrcList];
+          results = lrcList;
         }
       });
     } catch (_) {
