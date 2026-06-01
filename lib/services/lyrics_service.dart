@@ -113,6 +113,22 @@ class LyricsService {
     final fetchResult = await fetchLyricsResult(song);
     final lyrics = fetchResult.lyrics;
 
+    // Si LRCLib no encontró (no es error de red), hacer fallback a Kpoe
+    if (lyrics == null && fetchResult.failure != LyricsFetchFailure.network) {
+      final ttmlSaved = await FileService.saveTTMLForSong(song.path, song);
+      if (ttmlSaved) {
+        return LyricsSaveResult.success();
+      }
+      // También pudo haber salvado LRC como fallback del TTML
+      final file = File(song.path);
+      final lrcFile = File(
+        "${file.parent.path}/${p.basenameWithoutExtension(file.path)}.lrc",
+      );
+      if (await lrcFile.exists()) {
+        return LyricsSaveResult.success();
+      }
+    }
+
     if (lyrics == null) {
       if (fetchResult.failure == LyricsFetchFailure.network) {
         return LyricsSaveResult.network(
