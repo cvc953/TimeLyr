@@ -78,13 +78,25 @@ class KpoeRemoteService {
   }
 
   static String _decodeXmlEntities(String source) {
-    return source
+    var out = source
         .replaceAll('&nbsp;', ' ')
         .replaceAll('&amp;', '&')
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>')
         .replaceAll('&quot;', '"')
         .replaceAll('&apos;', "'");
+
+    // Decode numeric entities like &#x27; or &#039;
+    out = out.replaceAllMapped(
+      RegExp(r'&#(\d+);'),
+      (m) => String.fromCharCode(int.parse(m.group(1)!)),
+    );
+    out = out.replaceAllMapped(
+      RegExp(r'&#x([0-9a-fA-F]+);'),
+      (m) => String.fromCharCode(int.parse(m.group(1)!, radix: 16)),
+    );
+
+    return out;
   }
 
   static String _toLrcTimestamp(String? raw) {

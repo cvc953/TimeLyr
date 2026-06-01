@@ -56,5 +56,23 @@ void main() {
       final lrc = KpoeRemoteService.convertTtmlToLrc(ttml);
       expect(lrc, contains('[00:00.00]Texto sin begin'));
     });
+
+    test('convertTtmlToLrc decodifica entidades XML y timestamps reales', () {
+      final ttml =
+          '<?xml version="1.0" encoding="UTF-8"?>'
+          '<tt xmlns="http://www.w3.org/ns/ttml">'
+          '<body><div>'
+          '<p begin="00:00.010" end="00:01.670">Noi siamo chaos</p>'
+          '<p begin="00:01.670" end="00:05.280">Il chaos perfetto, perfetto</p>'
+          '<p begin="00:05.280" end="00:07.640">Tra spine e rose</p>'
+          '<p begin="00:31.220" end="00:33.960">cuore nell&#x27;arsenico</p>'
+          '<p begin="00:33.960" end="00:36.590">Per dimenticarci</p>'
+          '</div></body></tt>';
+
+      final lrc = KpoeRemoteService.convertTtmlToLrc(ttml);
+      expect(lrc, contains('[00:00.01]Noi siamo chaos'));
+      expect(lrc, contains('[00:01.67]Il chaos perfetto, perfetto'));
+      expect(lrc, contains('[00:31.22]cuore nell\'arsenico'));
+    });
   });
 }
