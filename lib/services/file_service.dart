@@ -12,6 +12,10 @@ class FileService {
   static Set<String> indexedPaths = {}; // For O(1) lookups
   static int _activeScanId = 0;
 
+  static void cancelActiveScan() {
+    _activeScanId++;
+  }
+
   static void setLibrarySongs(List<Song> songs) {
     librarySongs = songs;
     indexedPaths = songs.map((s) => s.path).toSet();
@@ -44,6 +48,14 @@ class FileService {
     };
 
     for (int i = 0; i < musicList.length; i++) {
+      if (scanId != _activeScanId) {
+        return;
+      }
+
+      if (i % 50 == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
       final item = musicList[i] as Map<dynamic, dynamic>;
       final path = item['path'] as String?;
 

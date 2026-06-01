@@ -13,7 +13,9 @@ import 'dart:typed_data';
 import '../services/download_manager.dart';
 import 'package:path/path.dart' as p;
 
-enum LyricFilter { all, withLyrics, withoutLyrics }
+enum LyricFilter { all, noLyrics, lrcOnly, ttmlReady }
+
+enum SongLyricState { noLyrics, lrcOnly, ttmlReady }
 
 class _LyricStatus {
   final bool hasLrc;
@@ -70,6 +72,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   StreamSubscription<void>? _librarySub;
+
+  SongLyricState _songLyricState(_LyricStatus status) {
+    if (status.hasTtml) {
+      return SongLyricState.ttmlReady;
+    }
+    if (status.hasLrc) {
+      return SongLyricState.lrcOnly;
+    }
+    return SongLyricState.noLyrics;
+  }
 
   Future<_LyricStatus> _buildLyricStatus(Song song) async {
     final file = File(song.path);
@@ -185,12 +197,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
             normalizedQuery.isEmpty || searchBlob.contains(normalizedQuery);
 
         bool matchesLyricFilter = true;
+        final songState = _songLyricState(lyricStatus);
         switch (_lyricFilter) {
-          case LyricFilter.withLyrics:
-            matchesLyricFilter = lyricStatus.hasLrc && lyricStatus.hasTtml;
+          case LyricFilter.ttmlReady:
+            matchesLyricFilter = songState == SongLyricState.ttmlReady;
             break;
-          case LyricFilter.withoutLyrics:
-            matchesLyricFilter = !lyricStatus.hasLrc || !lyricStatus.hasTtml;
+          case LyricFilter.lrcOnly:
+            matchesLyricFilter = songState == SongLyricState.lrcOnly;
+            break;
+          case LyricFilter.noLyrics:
+            matchesLyricFilter = songState == SongLyricState.noLyrics;
             break;
           case LyricFilter.all:
             matchesLyricFilter = true;
@@ -207,18 +223,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
       downloadingSongs.add(song.path);
     });
 
-    final ok = await LyricsService.downloadAndSave(song);
+    final result = await LyricsService.downloadAndSaveResult(song);
 
     setState(() {
       downloadingSongs.remove(song.path);
     });
 
-    if (!ok) {
+    if (!result.saved) {
       if (!mounted) {
         return;
       }
+      final message = result.failure == LyricsFetchFailure.network
+          ? (result.message ??
+                "Error técnico al descargar letras. Verificá tu conexión e intentá de nuevo.")
+          : "No se encontró letra para ${song.title}";
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("No se encontró letra para ${song.title}")),
+        SnackBar(content: Text(message)),
       );
       return;
     }
@@ -380,8 +400,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       icon: Icon(
         _lyricFilter == LyricFilter.all
             ? Icons.filter_list
-            : _lyricFilter == LyricFilter.withoutLyrics
-            ? Icons.music_note
+            : _lyricFilter == LyricFilter.ttmlReady
+            ? Icons.check_circle
+            : _lyricFilter == LyricFilter.lrcOnly
+            ? Icons.library_music
             : Icons.music_off,
         color: Colors.white,
       ),
@@ -449,7 +471,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ),
         ),
         PopupMenuItem<LyricFilter>(
-          value: LyricFilter.withLyrics,
+          value: LyricFilter.ttmlReady,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -457,13 +479,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
-              "Con letra",
+              "TTML listo",
               style: TextStyle(color: Colors.white),
             ),
           ),
         ),
         PopupMenuItem<LyricFilter>(
-          value: LyricFilter.withoutLyrics,
+          value: LyricFilter.lrcOnly,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -471,7 +493,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
-              "Sin letra",
+              "Solo LRC",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ),
+        PopupMenuItem<LyricFilter>(
+          value: LyricFilter.noLyrics,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white12,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              "Sin letras",
               style: TextStyle(color: Colors.white),
             ),
           ),
@@ -574,6 +610,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final lyricStatus =
         _lyricStatusByPath[song.path] ??
         const _LyricStatus(hasLrc: false, hasTtml: false);
+    final songState = _songLyricState(lyricStatus);
     unawaited(_queueArtworkLoad(song));
 
     return Row(
@@ -639,12 +676,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
         const SizedBox(width: 12),
 
+        _buildLyricStateChip(songState),
+
+        const SizedBox(width: 8),
+
         // Descarga / loader / check
-        (lyricStatus.hasLrc && lyricStatus.hasTtml)
+        (songState == SongLyricState.ttmlReady)
             ? const Icon(
                 Icons.check_circle,
                 color: Colors.greenAccent,
                 size: 28,
+              )
+            : (songState == SongLyricState.lrcOnly)
+            ? const Icon(
+                Icons.library_music,
+                color: Colors.amberAccent,
+                size: 26,
               )
             : downloadingSongs.contains(song.path) || dm.isRunning
             ? const SizedBox(
@@ -660,6 +707,45 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 icon: const Icon(Icons.download, color: Colors.white, size: 26),
               ),
       ],
+    );
+  }
+
+  Widget _buildLyricStateChip(SongLyricState state) {
+    switch (state) {
+      case SongLyricState.ttmlReady:
+        return _stateChip(
+          label: 'TTML listo',
+          color: Colors.greenAccent,
+        );
+      case SongLyricState.lrcOnly:
+        return _stateChip(
+          label: 'Solo LRC',
+          color: Colors.amberAccent,
+        );
+      case SongLyricState.noLyrics:
+        return _stateChip(
+          label: 'Sin letras',
+          color: Colors.white60,
+        );
+    }
+  }
+
+  Widget _stateChip({required String label, required Color color}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }

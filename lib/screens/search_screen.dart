@@ -93,63 +93,85 @@ class _SearchScreenState extends State<SearchScreen> {
       _error = null;
     });
 
-    final lrcList = await LRCLibService.getManualLyrics(
-      artist: artist,
-      title: title,
-      album: album,
-    );
+    try {
+      final lrcList = await LRCLibService.getManualLyrics(
+        artist: artist,
+        title: title,
+        album: album,
+      );
 
-    // Buscar TTML en el servidor (KpoeRemoteService)
-    final ttmlServerResult = await KpoeRemoteService.getKpoeLyrics(
-      artist: artist,
-      title: title,
-      album: album,
-      durationSeconds: 0,
-    );
+      // Buscar TTML en el servidor (KpoeRemoteService)
+      final ttmlServerResult = await KpoeRemoteService.getKpoeLyrics(
+        artist: artist,
+        title: title,
+        album: album,
+        durationSeconds: 0,
+      );
 
-    // Buscar archivos TTML locales que coincidan con el título o artista
-    final dir = Directory(".");
-    final ttmlFiles = await dir
-        .list()
-        .where((f) => f.path.endsWith('.ttml') || f.path.endsWith('.ttml.xml'))
-        .toList();
+      // Buscar archivos TTML locales que coincidan con el título o artista
+      final dir = Directory(".");
+      final ttmlFiles = await dir
+          .list()
+          .where(
+            (f) => f.path.endsWith('.ttml') || f.path.endsWith('.ttml.xml'),
+          )
+          .toList();
 
-    final ttmlLocalResults = <LyricResult>[];
-    for (final f in ttmlFiles) {
-      final name = f.uri.pathSegments.last.toLowerCase();
-      if ((title.isNotEmpty && name.contains(title.toLowerCase())) ||
-          (artist.isNotEmpty && name.contains(artist.toLowerCase()))) {
-        final lyrics = await extractTtmlLyrics(f.path);
-        if (lyrics.trim().isNotEmpty) {
-          ttmlLocalResults.add(
-            LyricResult(
-              id: 0,
-              plainLyrics: lyrics,
-              syncedLyrics: '',
-              title: title.isNotEmpty ? title : f.uri.pathSegments.last,
-              artist: artist,
-              album: '',
-              durationSeconds: 0,
-              isInstrumental: false,
-            ),
-          );
+      final ttmlLocalResults = <LyricResult>[];
+      for (final f in ttmlFiles) {
+        final name = f.uri.pathSegments.last.toLowerCase();
+        if ((title.isNotEmpty && name.contains(title.toLowerCase())) ||
+            (artist.isNotEmpty && name.contains(artist.toLowerCase()))) {
+          final lyrics = await extractTtmlLyrics(f.path);
+          if (lyrics.trim().isNotEmpty) {
+            ttmlLocalResults.add(
+              LyricResult(
+                id: 0,
+                plainLyrics: lyrics,
+                syncedLyrics: '',
+                title: title.isNotEmpty ? title : f.uri.pathSegments.last,
+                artist: artist,
+                album: '',
+                durationSeconds: 0,
+                isInstrumental: false,
+              ),
+            );
+          }
         }
       }
-    }
 
-    if (!mounted) return;
-
-    setState(() {
-      isSearching = false;
-      final ttmlServerList = ttmlServerResult != null ? [ttmlServerResult] : [];
-      if (lrcList.isEmpty &&
-          ttmlLocalResults.isEmpty &&
-          ttmlServerList.isEmpty) {
-        _error = "No se encontraron letras para los criterios dados.";
-      } else {
-        results = [...ttmlServerList, ...ttmlLocalResults, ...lrcList];
+      if (!mounted) {
+        return;
       }
-    });
+
+      setState(() {
+        final ttmlServerList = ttmlServerResult != null
+            ? [ttmlServerResult]
+            : [];
+        if (lrcList.isEmpty &&
+            ttmlLocalResults.isEmpty &&
+            ttmlServerList.isEmpty) {
+          _error = "No se encontraron letras para los criterios dados.";
+        } else {
+          results = [...ttmlServerList, ...ttmlLocalResults, ...lrcList];
+        }
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _error =
+            "Ocurrió un error durante la búsqueda. Verificá tu conexión e intentá de nuevo.";
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSearching = false;
+        });
+      }
+    }
   }
 
   String formatDuration(double seconds) {
