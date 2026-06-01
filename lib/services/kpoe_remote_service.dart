@@ -29,6 +29,77 @@ class KpoeRemoteService {
     }
   }
 
+  /// Convierte TTML a líneas LRC (`[mm:ss.xx]texto`).
+  ///
+  /// Devuelve string vacío cuando no se pudo extraer contenido útil.
+  static String convertTtmlToLrc(String ttmlContent) {
+    try {
+      final paragraphRe = RegExp(
+        r'<p\b[^>]*>([\s\S]*?)<\/p>',
+        dotAll: true,
+        caseSensitive: false,
+      );
+      final beginRe = RegExp(
+        "\\bbegin\\s*=\\s*[\"']([^\"']+)[\"']",
+        caseSensitive: false,
+      );
+
+      final lines = <String>[];
+      for (final m in paragraphRe.allMatches(ttmlContent)) {
+        final pBlock = m.group(0) ?? '';
+        final inner = m.group(1) ?? '';
+        final tsMatch = beginRe.firstMatch(pBlock);
+        final lrcTimestamp = _toLrcTimestamp(tsMatch?.group(1));
+        final plain = _ttmlInnerToPlainText(inner);
+        if (plain.isEmpty) continue;
+        lines.add('[$lrcTimestamp]$plain');
+      }
+
+      if (lines.isNotEmpty) {
+        return lines.join('\n');
+      }
+
+      // Fallback mínimo: extraer texto plano global y marcarlo en 00:00.00
+      final text = _ttmlInnerToPlainText(ttmlContent);
+      if (text.isEmpty) return '';
+      return '[00:00.00]$text';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static String _ttmlInnerToPlainText(String source) {
+    var out = source;
+    out = out.replaceAll(RegExp(r'<br\s*\/?>', caseSensitive: false), ' ');
+    out = out.replaceAll(RegExp(r'<[^>]+>'), ' ');
+    out = _decodeXmlEntities(out);
+    out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return out;
+  }
+
+  static String _decodeXmlEntities(String source) {
+    return source
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'");
+  }
+
+  static String _toLrcTimestamp(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return '00:00.00';
+
+    final normalized = _normalizeTimestampsInString('begin="${raw.trim()}"');
+    final match = RegExp(r'begin="([0-9]{2}:[0-9]{2}\.[0-9]{2})"').firstMatch(
+      normalized,
+    );
+    if (match != null) {
+      return match.group(1)!;
+    }
+    return '00:00.00';
+  }
+
   static const List<String> _kpoeServers = [
     "https://lyricsplus.prjktla.my.id", //youly's server
     "https://lyricsplus.atomix.one/", //meow's mirror

@@ -29,5 +29,32 @@ void main() {
       expect(result, contains('<span>mundo </span> <span>'));
       expect(result, contains('<span>cómo </span> <span>'));
     });
+
+    test('convertTtmlToLrc extrae timestamps y texto de TTML', () {
+      final ttml = '''
+<tt xmlns="http://www.w3.org/ns/ttml">
+  <body>
+    <div>
+      <p begin="00:01.25" end="00:02.00"><span>Hola</span> <span>mundo</span></p>
+      <p begin="00:03.50" end="00:04.00"><span>Qué</span> <span>tal</span></p>
+    </div>
+  </body>
+</tt>
+''';
+
+      final lrc = KpoeRemoteService.convertTtmlToLrc(ttml);
+      expect(lrc, contains('[00:01.25]Hola mundo'));
+      expect(lrc, contains('[00:03.50]Qué tal'));
+    });
+
+    test('convertTtmlToLrc usa 00:00.00 cuando begin es inválido', () {
+      final ttml = '''
+<tt xmlns="http://www.w3.org/ns/ttml">
+  <body><div><p><span>Texto sin begin</span></p></div></body>
+</tt>
+''';
+      final lrc = KpoeRemoteService.convertTtmlToLrc(ttml);
+      expect(lrc, contains('[00:00.00]Texto sin begin'));
+    });
   });
 }

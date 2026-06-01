@@ -109,8 +109,19 @@ class FileService {
     );
   }
 
+  static Future<void> _saveTtmlAsLrcFallback(
+    String songPath,
+    Song song,
+    String ttmlContent,
+  ) async {
+    final lrcLyrics = KpoeRemoteService.convertTtmlToLrc(ttmlContent);
+    if (lrcLyrics.trim().isEmpty) return;
+    await saveLRC(songPath, lrcLyrics, song);
+  }
+
   static Future<bool> _saveTTMLContent(
     String songPath,
+    Song song,
     String ttmlContent,
   ) async {
     try {
@@ -135,8 +146,10 @@ class FileService {
         }
       }
 
-      // No guardar si algún <p> no tiene <span> ni </span>
+      // No guardar como TTML si algún <p> no tiene <span> ni </span>.
+      // En ese caso, hacer fallback a LRC para no perder la letra.
       if (KpoeRemoteService.hasParagraphWithoutAnySpan(ttmlContent)) {
+        await _saveTtmlAsLrcFallback(songPath, song, ttmlContent);
         return false;
       }
 
@@ -174,7 +187,7 @@ class FileService {
       artist: song.artist,
     );
 
-    return _saveTTMLContent(songPath, converted);
+    return _saveTTMLContent(songPath, song, converted);
   }
 
   static Future<Uint8List?> loadArtwork(String path) async {

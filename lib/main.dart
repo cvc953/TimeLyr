@@ -22,7 +22,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: "Lyrio",
+      title: "TimeLyr",
 
       home: firstRun ? const HomeScreen() : const MainScreen(),
     );
