@@ -116,6 +116,15 @@ class FileService {
   ) async {
     final lrcLyrics = KpoeRemoteService.convertTtmlToLrc(ttmlContent);
     if (lrcLyrics.trim().isEmpty) return;
+
+    // No guardar si todos los timestamps son 00:00.00 (fuente sin timing real)
+    final tsRe = RegExp(r'^\[(\d{2}:\d{2}\.\d{2})\]');
+    final tsLines =
+        lrcLyrics.split('\n').where((l) => tsRe.hasMatch(l)).toList();
+    if (tsLines.isNotEmpty && tsLines.every((l) => l.startsWith('[00:00.00]'))) {
+      return;
+    }
+
     await saveLRC(songPath, lrcLyrics, song);
   }
 
