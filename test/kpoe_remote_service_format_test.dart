@@ -96,5 +96,18 @@ void main() {
       expect(lrc, contains('[00:01.50]Uno'));
       expect(lrc, contains('[01:30.00]Noventa'));
     });
+
+    test('convertTtmlToLrc une sílabas adyacentes sin agregar espacios', () {
+      final ttml = '<tt xmlns="http://www.w3.org/ns/ttml"><body><div>'
+          '<p begin="19.764"><span>When</span> <span>you were</span> '
+          '<span>here</span> <span>be</span><span>fore</span></p>'
+          '<p begin="29.862"><span>You\'re</span> <span>just</span> '
+          '<span>like</span> <span>an</span><span>gel</span></p>'
+          '</div></body></tt>';
+
+      final lrc = KpoeRemoteService.convertTtmlToLrc(ttml);
+      expect(lrc, contains('[00:19.76]When you were here before'));
+      expect(lrc, contains("[00:29.86]You're just like an angel"));
+    });
   });
 }

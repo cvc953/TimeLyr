@@ -46,7 +46,7 @@ class AboutScreen extends StatelessWidget {
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16.0),
                   child: Text(
-                    'TimeLyr es una aplicación diseñada para obtener letras de canciones almacenadas en tu dispositivo. La app lee los metadatos de tus archivos, busca letras sincronizadas (LRC) o de texto plano en LRCLib y las guarda localmente para que puedas consultarlas sin conexión.',
+                    'TimeLyr es una aplicación diseñada para obtener letras de canciones almacenadas en tu dispositivo. La app lee los metadatos de tus archivos, busca letras sincronizadas (LRC) o de texto plano en LRCLib, y TTML sincronizado en lrc.red, y las guarda localmente para que puedas consultarlas sin conexión.',
                     textAlign: TextAlign.left,
                     style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
@@ -143,6 +143,37 @@ class AboutScreen extends StatelessWidget {
                               final url = Uri.parse(
                                 'https://github.com/tranxuanthang/lrclib',
                               );
+                              _launchURL(url);
+                            },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.all(10.0),
+                  child: Column(
+                    children: [
+                      Text(
+                        'TTML proporcionado por lrc.red.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      RichText(
+                        text: TextSpan(
+                          text: 'Visita lrc.red',
+                          style: TextStyle(
+                            color: Colors.blueAccent,
+                            decoration: TextDecoration.underline,
+                            fontSize: 12,
+                          ),
+                          recognizer: TapGestureRecognizer()
+                            ..onTap = () async {
+                              final url = Uri.parse('https://lrc.red');
                               _launchURL(url);
                             },
                         ),
