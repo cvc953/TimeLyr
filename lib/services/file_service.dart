@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'dart:async';
 import 'package:path/path.dart' as p;
 import 'package:timelyr/services/kpoe_remote_service.dart';
+import 'package:timelyr/services/lrc_red_service.dart';
 
 class FileService {
   static List<Song> librarySongs = [];
@@ -97,23 +98,55 @@ class FileService {
     libraryUpdateController.add(null);
   }
 
-  static Future<void> saveLRC(String songPath, String lyrics, Song song) async {
+  static String _ttmlPathFor(String songPath) {
     final file = File(songPath);
     final dir = file.parent.path;
     final filename = p.basenameWithoutExtension(file.path);
-    final lrcPath = "$dir/$filename.lrc";
+    return "$dir/$filename.ttml";
+  }
 
-    final lrcFile = File(lrcPath);
+  static String _lrcPathFor(String songPath) {
+    final file = File(songPath);
+    final dir = file.parent.path;
+    final filename = p.basenameWithoutExtension(file.path);
+    return "$dir/$filename.lrc";
+  }
+
+  static bool _isValidTtml(String contents) {
+    if (!contents.contains('<tt') && !contents.contains('<?xml')) {
+      return false;
+    }
+    return contents.trim().length > 100;
+  }
+
+  static Future<bool> _hasValidTtml(String songPath) async {
+    final ttmlFile = File(_ttmlPathFor(songPath));
+    if (!ttmlFile.existsSync()) return false;
+    try {
+      return _isValidTtml(await ttmlFile.readAsString());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> saveLRC(
+    String songPath,
+    String lyrics,
+    Song song, {
+    String source = 'LRCLib.net',
+  }) async {
+    final lrcFile = File(_lrcPathFor(songPath));
     await lrcFile.writeAsString(
-      '$lyrics\n[ar:${song.artist.toString()}]\n[al:${song.album.toString()}]\n[ti:${song.title.toString()}]\n\n[by:TimeLyr]\n[source:LRCLib.net]',
+      '$lyrics\n[ar:${song.artist.toString()}]\n[al:${song.album.toString()}]\n[ti:${song.title.toString()}]\n\n[by:TimeLyr]\n[source:$source]',
     );
   }
 
   static Future<void> _saveTtmlAsLrcFallback(
     String songPath,
     Song song,
-    String ttmlContent,
-  ) async {
+    String ttmlContent, {
+    String source = 'Lyrics+',
+  }) async {
     final lrcLyrics = KpoeRemoteService.convertTtmlToLrc(ttmlContent);
     if (lrcLyrics.trim().isEmpty) return;
 
@@ -125,30 +158,36 @@ class FileService {
       return;
     }
 
-    await saveLRC(songPath, lrcLyrics, song);
+    await saveLRC(songPath, lrcLyrics, song, source: source);
+  }
+
+  static Future<void> _saveLrcFromTtmlIfMissing(
+    String songPath,
+    Song song,
+    String ttml, {
+    required String source,
+  }) async {
+    if (File(_lrcPathFor(songPath)).existsSync()) return;
+    await _saveTtmlAsLrcFallback(songPath, song, ttml, source: source);
   }
 
   static Future<bool> _saveTTMLContent(
     String songPath,
     Song song,
-    String ttmlContent,
-  ) async {
+    String ttmlContent, {
+    bool requireSpans = true,
+    bool addSpanSpaces = true,
+    String source = 'Lyrics+',
+  }) async {
     try {
-      final file = File(songPath);
-      final dir = file.parent.path;
-      final filename = p.basenameWithoutExtension(file.path);
-      final ttmlPath = "$dir/$filename.ttml";
+      final ttmlPath = _ttmlPathFor(songPath);
 
       // Si ya existe un .ttml para esta canción, comprobar su integridad.
       // Si parece válido, no reintentar; si parece dañado, proceder a descargar.
       final existing = File(ttmlPath);
       if (existing.existsSync()) {
         try {
-          final contents = await existing.readAsString();
-          // Considerar válido si contiene etiqueta <tt y tiene tamaño razonable
-          if (contents.contains('<tt') || contents.contains('<?xml')) {
-            if (contents.trim().length > 100) return true;
-          }
+          if (_isValidTtml(await existing.readAsString())) return true;
           // Si no parece válido, continuar y reintentar la descarga (sobrescribir).
         } catch (_) {
           // Si no se puede leer, intentar descargar de nuevo.
@@ -157,16 +196,23 @@ class FileService {
 
       // No guardar como TTML si algún <p> no tiene <span> ni </span>.
       // En ese caso, hacer fallback a LRC para no perder la letra.
-      if (KpoeRemoteService.hasParagraphWithoutAnySpan(ttmlContent)) {
-        await _saveTtmlAsLrcFallback(songPath, song, ttmlContent);
+      if (requireSpans &&
+          KpoeRemoteService.hasParagraphWithoutAnySpan(ttmlContent)) {
+        await _saveTtmlAsLrcFallback(
+          songPath,
+          song,
+          ttmlContent,
+          source: source,
+        );
         return false;
       }
 
       final ttmlFile = File(ttmlPath);
-      // Añadir espacio a las palabras cuando hay separación entre spans
-      final normalized = KpoeRemoteService.agregarEspacioEntreSpans(
-        ttmlContent,
-      );
+      // Añadir espacio a las palabras cuando hay separación entre spans.
+      // lrc.red ya trae el TTML bien formado y se guarda verbatim.
+      final normalized = addSpanSpaces
+          ? KpoeRemoteService.agregarEspacioEntreSpans(ttmlContent)
+          : ttmlContent;
       await ttmlFile.writeAsString(normalized);
       return true;
     } catch (e) {
@@ -176,7 +222,68 @@ class FileService {
     }
   }
 
+  static Future<void> _deriveLrcFromExistingTtmlIfMissing(
+    String songPath,
+    Song song,
+  ) async {
+    try {
+      final existing = await File(_ttmlPathFor(songPath)).readAsString();
+      await _saveLrcFromTtmlIfMissing(
+        songPath,
+        song,
+        existing,
+        source: 'TTML',
+      );
+    } catch (e) {
+      print('TTML LRC error: $e');
+    }
+  }
+
   static Future<bool> saveTTMLForSong(String songPath, Song song) async {
+    // Si ya hay un TTML válido, no hacer peticiones de red. Pero si falta el
+    // LRC, derivarlo para que el visualizador pueda mostrar la letra.
+    if (await _hasValidTtml(songPath)) {
+      await _deriveLrcFromExistingTtmlIfMissing(songPath, song);
+      return true;
+    }
+
+    // lrc.red es la fuente preferida de TTML.
+    try {
+      final lrcRedTtml = await LrcRedService.fetchTtmlForSong(
+        title: song.title,
+        artist: song.artist,
+        album: song.album,
+        durationSeconds: song.durationSeconds,
+      );
+
+      if (lrcRedTtml != null && lrcRedTtml.trim().isNotEmpty) {
+        final saved = await _saveTTMLContent(
+          songPath,
+          song,
+          lrcRedTtml,
+          requireSpans: false,
+          addSpanSpaces: false,
+          source: 'lrc.red',
+        );
+        if (saved) {
+          try {
+            await _saveLrcFromTtmlIfMissing(
+              songPath,
+              song,
+              lrcRedTtml,
+              source: 'lrc.red',
+            );
+          } catch (e) {
+            print('lrc.red LRC error: $e');
+          }
+          return true;
+        }
+      }
+    } catch (e) {
+      print('lrc.red TTML error: $e');
+    }
+
+    // Fallback: Lyrics+ (KPoE).
     final ttml = await KpoeRemoteService.fetchFromKpoe(
       song.title,
       song.artist,
@@ -196,7 +303,20 @@ class FileService {
       artist: song.artist,
     );
 
-    return _saveTTMLContent(songPath, song, converted);
+    final saved = await _saveTTMLContent(songPath, song, converted);
+    if (saved) {
+      try {
+        await _saveLrcFromTtmlIfMissing(
+          songPath,
+          song,
+          converted,
+          source: 'Lyrics+',
+        );
+      } catch (e) {
+        print('Lyrics+ LRC error: $e');
+      }
+    }
+    return saved;
   }
 
   static Future<Uint8List?> loadArtwork(String path) async {

@@ -4,7 +4,7 @@
 # 🎵 **TimeLyr — Buscador avanzado de letras para tu música local**
 
 **TimeLyr** es una aplicación móvil desarrollada en **Flutter** que permite obtener, gestionar y visualizar letras de canciones almacenadas en tu dispositivo.
-Analiza tus archivos locales, extrae sus metadatos y descarga letras sincronizadas (LRC) o en texto plano desde **LRCLib**, manteniendo siempre la privacidad del usuario.
+Analiza tus archivos locales, extrae sus metadatos y descarga letras sincronizadas (LRC) o en texto plano desde **LRCLib**, además de TTML desde **lrc.red**, manteniendo siempre la privacidad del usuario.
 
 ---
 
@@ -19,6 +19,11 @@ Analiza tus archivos locales, extrae sus metadatos y descarga letras sincronizad
 * 📡 **Obtención de letras desde LRCLib API**
   Peticiones optimizadas según tus metadatos locales.
 
+* 🎤 **TTML desde lrc.red**
+  Fuente preferida de letras TTML con nivel de línea y palabra. Si no hay
+  coincidencia, se usa Lyrics+ (KPoE) como respaldo. Datos proporcionados por
+  [lrc.red](https://lrc.red).
+
 * 🚫 **Detección de canciones instrumentales**
   Si no se encuentra letra, TimeLyr lo marca automáticamente.
 
@@ -32,7 +37,7 @@ Analiza tus archivos locales, extrae sus metadatos y descarga letras sincronizad
 | Componente  | Tecnología                       |
 | ----------- | -------------------------------- |
 | Framework   | Flutter (Dart 3)                 |
-| API         | LRCLib                           |
+| API         | LRCLib (LRC) + lrc.red (TTML)    |
 | Metadatos   | metadata_god + servicios propios |
 | Parsing LRC | Implementación personalizada     |
 | UI          | Material 3 con temas propios     |
@@ -147,8 +152,11 @@ flutter build apk --release
    * álbum
    * duración
 5. Obtiene letra sincronizada o no sincronizada.
-6. Guarda la letra localmente (`download_manager.dart`).
-7. Si no hay letra → marca la canción como instrumental.
+6. Para TTML, consulta primero lrc.red (búsqueda + descarga por ISRC); si no hay
+   coincidencia, usa los espejos de Lyrics+ (KPoE).
+7. Guarda la letra localmente (`download_manager.dart`). Si hay TTML pero no
+   LRC, deriva un LRC de nivel de línea para el visualizador.
+8. Si no hay letra → marca la canción como instrumental.
 
 ---
 

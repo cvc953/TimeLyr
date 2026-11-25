@@ -70,8 +70,12 @@ class KpoeRemoteService {
 
   static String _ttmlInnerToPlainText(String source) {
     var out = source;
+    // Los saltos de línea explícitos sí separan texto.
     out = out.replaceAll(RegExp(r'<br\s*\/?>', caseSensitive: false), ' ');
-    out = out.replaceAll(RegExp(r'<[^>]+>'), ' ');
+    // El resto de etiquetas se eliminan sin insertar espacios: las sílabas
+    // adyacentes de lrc.red (<span>be</span><span>fore</span>) deben quedar
+    // unidas, y solo el espacio literal entre spans separa palabras.
+    out = out.replaceAll(RegExp(r'<[^>]+>'), '');
     out = _decodeXmlEntities(out);
     out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
     return out;
