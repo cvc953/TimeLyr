@@ -209,7 +209,6 @@ class FileService {
 
       final ttmlFile = File(ttmlPath);
       // Añadir espacio a las palabras cuando hay separación entre spans.
-      // lrc.red ya trae el TTML bien formado y se guarda verbatim.
       final normalized = addSpanSpaces
           ? KpoeRemoteService.agregarEspacioEntreSpans(ttmlContent)
           : ttmlContent;
@@ -257,12 +256,13 @@ class FileService {
       );
 
       if (lrcRedTtml != null && lrcRedTtml.trim().isNotEmpty) {
+        final normalized = KpoeRemoteService.normalizeTtml(lrcRedTtml);
         final saved = await _saveTTMLContent(
           songPath,
           song,
-          lrcRedTtml,
+          normalized,
           requireSpans: false,
-          addSpanSpaces: false,
+          addSpanSpaces: true,
           source: 'lrc.red',
         );
         if (saved) {
@@ -270,7 +270,7 @@ class FileService {
             await _saveLrcFromTtmlIfMissing(
               songPath,
               song,
-              lrcRedTtml,
+              normalized,
               source: 'lrc.red',
             );
           } catch (e) {

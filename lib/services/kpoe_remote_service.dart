@@ -29,6 +29,19 @@ class KpoeRemoteService {
     }
   }
 
+  /// Normalizes raw TTML XML: formats structure, preserves inter-span
+  /// spaces, collapses paragraphs, ensures XML declaration, and converts
+  /// timestamps to mm:ss.cc format.
+  static String normalizeTtml(String ttml) {
+    var result = markInterSpanSpaces(ttml);
+    result = _formatXml(result);
+    result = restoreInterSpanSpaces(result);
+    result = _collapseParagraphs(result);
+    result = _ensureXmlDeclaration(result);
+    result = _normalizeTimestampsInString(result);
+    return result;
+  }
+
   /// Convierte TTML a líneas LRC (`[mm:ss.xx]texto`).
   ///
   /// Devuelve string vacío cuando no se pudo extraer contenido útil.
